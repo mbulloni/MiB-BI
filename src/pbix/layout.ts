@@ -182,6 +182,9 @@ export function parseLayout(layoutJson: string, tables: TableMeta[], measureName
     const bgTransp = decode(bgProps.transparency);
     const outspace = prop(secCfg.objects, 'outspace');
     const wallColor = decode(outspace.color);
+    const refresh = prop(secCfg.objects, 'pageRefresh');
+    const refreshMs = decode(refresh.duration);
+    const refreshOn = decode(refresh.show) !== false && typeof refreshMs === 'number' && refreshMs > 0;
     // Older files keep geometry only in config.layouts[0].position.
     const geom = (c: any) => {
       const p = json(c.config).layouts?.[0]?.position ?? {};
@@ -372,6 +375,7 @@ export function parseLayout(layoutJson: string, tables: TableMeta[], measureName
       ...(typeof bgTransp === 'number' ? { backgroundTransparency: bgTransp } : {}),
       ...(bgFit === 'Fit' || bgFit === 'Fill' || bgFit === 'Normal' ? { backgroundFit: bgFit } : {}),
       ...(typeof wallColor === 'string' ? { wallpaper: wallColor } : {}),
+      ...(refreshOn ? { autoRefresh: { seconds: Math.max(1, Math.round((refreshMs as number) / 1000)) } } : {}),
       ...(secCfg.visibility === 1 ? { hidden: true } : {}),
       ...(sec.name ? { pbiName: sec.name } : {}),
       ...(secCfg.type === 1 ? { tooltip: true } : {}),
@@ -689,6 +693,8 @@ export function buildLayout(pages: Page[], reportFilters: Filter[], theme?: Them
     if (p.backgroundTransparency !== undefined) bgProps.transparency = L(`${p.backgroundTransparency}D`);
     if (Object.keys(bgProps).length) secConfig.objects.background = [{ properties: bgProps }];
     if (p.wallpaper) secConfig.objects.outspace = [{ properties: { color: { solid: { color: Ls(p.wallpaper) } } } }];
+    // Aggiornamento automatico pagina (fixed interval; duration in milliseconds).
+    if (p.autoRefresh) secConfig.objects.pageRefresh = [{ properties: { show: L('true'), duration: L(`${p.autoRefresh.seconds * 1000}D`) } }];
     if (p.hidden) secConfig.visibility = 1;
     const rels = Object.entries(p.interactions ?? {}).map(([k, m]) => {
       const [a, b] = k.split('>').map((id) => p.visuals.find((x) => x.id === id));

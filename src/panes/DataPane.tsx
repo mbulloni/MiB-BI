@@ -138,7 +138,8 @@ export function DataPane() {
       <div className="pane-search"><Icon name="search" size={14} /><input type="search" placeholder="Cerca" value={q} onChange={(e) => setQ(e.target.value)} /></div>
       <div className="pane-body tree">
         {!s.tables.length && <div style={{ color: 'var(--text2)', padding: '6px 4px' }}>Nessun dato caricato. Usare <b>Ottieni dati</b> nella barra multifunzione.</div>}
-        {[...s.tables, ...measureOnly].map((t) => {
+        {/* Aggregation tables are hidden in the report view, like Power BI. */}
+        {[...s.tables.filter((t) => !report || !s.report.aggregations?.some((a) => a.table === t.name)), ...measureOnly].map((t) => {
           const match = (n: string) => !q || n.toLowerCase().includes(q.toLowerCase()) || t.name.toLowerCase().includes(q.toLowerCase());
           const folderOf = (n: string) => folders[t.name + '\u0001' + n] ?? '';
           const g = calcGroup(t.name);
@@ -307,6 +308,8 @@ function DataMenu({ menu, close, report, toggleOpen, isOpen }: { menu: MenuState
       {t && !g && <button onClick={props({})}><Icon name="calendar" />{s.report.dateTables?.[menu.table] ? 'Tabella delle date…' : 'Contrassegna come tabella delle date'}</button>}
       {t && !g && <button onClick={run(() => s.set({ calendarDialog: menu.table }))}><Icon name="calendar" />Opzioni calendario</button>}
       <button disabled={!t} onClick={props({})}><Icon name="gear" />Proprietà</button>
+      <button disabled={!t || s.tables.length < 2} onClick={run(() => s.set({ aggDialog: menu.table }))}><Icon name="sigma" />Gestisci aggregazioni</button>
+      <button disabled={!t || !!t.source.dax || t.storageMode === 'directQuery'} onClick={run(() => s.set({ incrementalDialog: menu.table }))}><Icon name="refresh" />Aggiornamento incrementale</button>
       <button onClick={run(() => s.set({ view: 'data', dataViewTable: menu.table }))}>Visualizza in vista tabella</button>
       <button onClick={run(() => toggleOpen(tk))}>{isOpen(tk) ? 'Comprimi' : 'Espandi'}</button>
       <button disabled={!t || !!t.source.dax || !!g} onClick={run(() => s.openPowerQuery(menu.table))}><Icon name="transform" size={16} box={32} />Modifica query</button>

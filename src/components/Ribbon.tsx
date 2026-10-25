@@ -170,6 +170,13 @@ export function Ribbon() {
             <Big icon="calendar" label={<>Opzioni<br />calendario</>} disabled={!s.tables.length} onClick={() => s.set({ calendarDialog: s.dataViewTable ?? s.tables.find((t) => t.columns.some((c) => /^(DATE|TIMESTAMP)/i.test(c.type)))?.name ?? s.tables[0].name })}
               title="Calendari per la time intelligence basata su calendario (anni fiscali, settimane, 4-4-5…)" />
           </Group>
+          <Group label="Modello">
+            <Big icon="sigma" label={<>Gestisci<br />aggregazioni</>} onClick={() => s.set({ aggDialog: true })} disabled={s.tables.length < 2}
+              title="Tabelle di aggregazione che rispondono alle query al posto della tabella dei dettagli (DirectQuery)" />
+            <Big icon="refresh" label={<>Aggiornamento<br />incrementale</>} disabled={!s.tables.some((t) => !t.source.dax && t.storageMode !== 'directQuery')}
+              onClick={() => s.set({ incrementalDialog: s.report.refreshPolicies?.[0]?.table ?? s.tables.find((t) => !t.source.dax && t.storageMode !== 'directQuery' && t.columns.some((c) => /^(DATE|TIMESTAMP)/i.test(c.type)))?.name ?? s.tables.find((t) => !t.source.dax && t.storageMode !== 'directQuery')!.name })}
+              title="Criteri di aggiornamento incrementale (RangeStart/RangeEnd) e simulazione delle partizioni del servizio" />
+          </Group>
           <Group label="Traduzioni">
             <Big icon="translate" label="Traduzioni" onClick={() => s.set({ translationsDialog: true })} disabled={!s.tables.length}
               title="Nomi di tabelle, colonne e misure in altre lingue (culture del modello)" />

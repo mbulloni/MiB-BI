@@ -552,6 +552,22 @@ function PageSettings() {
         <ColorPick label="Colore" value={p.backgroundColor ?? '#FFFFFF'} onChange={(c) => up((pg) => { pg.backgroundColor = c; })} />
         <label className="fmt-row"><span>Trasparenza (%)</span><input type="number" min={0} max={100} value={p.backgroundTransparency ?? 0} onChange={(e) => up((pg) => { pg.backgroundTransparency = Math.max(0, Math.min(100, +e.target.value)); })} /></label>
       </Card>
+      <Card title="Aggiornamento pagina">
+        <div className="fmt-row inline"><span>Aggiornamento automatico</span><Toggle on={!!p.autoRefresh} onChange={(b) => up((pg) => { pg.autoRefresh = b ? { seconds: 30 } : undefined; })} /></div>
+        {p.autoRefresh && <>
+          <label className="fmt-row"><span>Intervallo</span>
+            <span style={{ display: 'flex', gap: 6 }}>
+              <input type="number" min={1} value={p.autoRefresh.seconds >= 60 && p.autoRefresh.seconds % 60 === 0 ? p.autoRefresh.seconds / 60 : p.autoRefresh.seconds} style={{ width: 70 }}
+                onChange={(e) => { const n = Math.max(1, Math.round(+e.target.value || 1)); const min = p.autoRefresh!.seconds >= 60 && p.autoRefresh!.seconds % 60 === 0; up((pg) => { pg.autoRefresh = { seconds: min ? n * 60 : n }; }); }} />
+              <select value={p.autoRefresh.seconds >= 60 && p.autoRefresh.seconds % 60 === 0 ? 'm' : 's'}
+                onChange={(e) => up((pg) => { const sec = pg.autoRefresh!.seconds; pg.autoRefresh = { seconds: e.target.value === 'm' ? Math.max(1, Math.round(sec / 60)) * 60 : Math.max(1, sec % 60 === 0 && sec >= 60 ? sec / 60 : sec) }; })}>
+                <option value="s">secondi</option><option value="m">minuti</option>
+              </select>
+            </span>
+          </label>
+          <p className="pq-note">{s.tables.some((t) => t.storageMode === 'directQuery') ? 'Gli oggetti visivi della pagina rileggono le tabelle DirectQuery a ogni intervallo.' : 'Come in Power BI, l\'aggiornamento automatico interessa solo le tabelle DirectQuery: il modello non ne contiene.'}</p>
+        </>}
+      </Card>
       <Card title="Informazioni pagina" defaultOpen>
         <div className="fmt-row inline"><span>Consenti l'uso come descrizione comando</span><Toggle on={!!p.tooltip} onChange={(b) => up((pg) => { pg.tooltip = b || undefined; })} /></div>
         <div className="fmt-row inline"><span>Nascondi pagina</span><Toggle on={!!p.hidden} onChange={(b) => up((pg) => { pg.hidden = b || undefined; })} /></div>

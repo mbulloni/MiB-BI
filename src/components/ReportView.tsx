@@ -77,6 +77,22 @@ function PageTabs() {
   );
 }
 
+/** Like Power BI: "Modalità di archiviazione: Mista" when the model has DirectQuery tables (click = model view). */
+function StorageStatus() {
+  const s = useStore();
+  const modes = new Set(s.tables.filter((t) => !t.source.dax).map((t) => t.storageMode ?? 'import'));
+  if (!modes.has('directQuery') && !modes.has('dual')) return null;
+  const label = modes.size === 1 && modes.has('directQuery') ? 'DirectQuery' : 'Mista';
+  const page = s.page();
+  return (
+    <span className="storage-status" title="Le tabelle DirectQuery vengono lette dall'origine a ogni query. Fare clic per aprire la vista modello e modificare la modalità di archiviazione nelle proprietà della tabella."
+      onClick={() => s.set({ view: 'model' })}>
+      Modalità di archiviazione: <b>{label}</b>
+      {page.autoRefresh && s.view === 'report' && <> · aggiornamento ogni {page.autoRefresh.seconds % 60 === 0 && page.autoRefresh.seconds >= 60 ? `${page.autoRefresh.seconds / 60} min` : `${page.autoRefresh.seconds} s`}{s.dqTick ? ` (ultimo ${new Date(s.dqTick).toLocaleTimeString(locale())})` : ''}</>}
+    </span>
+  );
+}
+
 export function StatusBar({ fitScale }: { fitScale: number }) {
   const s = useStore();
   const idx = s.report.pages.findIndex((p) => p.id === s.activePageId) + 1;
@@ -87,6 +103,7 @@ export function StatusBar({ fitScale }: { fitScale: number }) {
       {s.view === 'report' && <span>Pagina {idx} di {s.report.pages.length}</span>}
       {s.view === 'data' && s.dataViewTable && <span>TABELLA: {s.dataViewTable} ({s.tables.find((t) => t.name === s.dataViewTable)?.rowCount.toLocaleString(locale())} righe)</span>}
       {s.crossFilter && <span>Filtro incrociato attivo: {s.crossFilter.column} = {s.crossFilter.value === '__NULL__' ? '(Vuoto)' : s.crossFilter.value}</span>}
+      <StorageStatus />
       {s.view === 'report' && (
         <div className="zoom">
           <button onClick={() => setPct(pct - 10)}>−</button>
@@ -106,6 +123,14 @@ export function ReportView({ onFit }: { onFit: (n: number) => void }) {
   const wrap = useRef<HTMLDivElement>(null);
   const [fit, setFit] = useState(1);
   const size = pageSize(page);
+  // Aggiornamento automatico pagina: DirectQuery tables are read again at the page's interval.
+  const hasDq = s.tables.some((t) => t.storageMode === 'directQuery');
+  useEffect(() => {
+    if (!page.autoRefresh || !hasDq || s.paused) return;
+    let running = false;
+    const id = setInterval(() => { if (running) return; running = true; useStore.getState().dqRefresh().finally(() => { running = false; }); }, Math.max(1, page.autoRefresh.seconds) * 1000);
+    return () => clearInterval(id);
+  }, [page.id, page.autoRefresh?.seconds, hasDq, s.paused]);
 
   useLayoutEffect(() => {
     const el = wrap.current!;

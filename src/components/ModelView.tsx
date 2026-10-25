@@ -164,6 +164,8 @@ export function ModelView() {
             <div className="mt-h" onMouseDown={startMove(t.name, i)} style={{ borderTopColor: related ? '#118DFF' : '#A19F9D' }}
               onContextMenu={(e) => { e.preventDefault(); s.set({ propsTarget: { table: t.name } }); }} title="Clic destro: proprietà della tabella">
               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</span>
+              {t.storageMode && <span className={'mt-mode ' + t.storageMode} title={t.storageMode === 'directQuery' ? 'Modalità di archiviazione: DirectQuery' : 'Modalità di archiviazione: Doppia'}>{t.storageMode === 'directQuery' ? 'DirectQuery' : 'Doppia'}</span>}
+              <button className="mt-props" title="Proprietà della tabella (modalità di archiviazione, tabella delle date…)" onMouseDown={(e) => e.stopPropagation()} onClick={() => s.set({ propsTarget: { table: t.name } })}><Icon name="gear" size={12} /></button>
             </div>
             <div className="mt-b" style={{ maxHeight: MAX_BODY }}>
               {t.columns.map((c) => (

@@ -192,6 +192,18 @@ async function sourceExpr(source) {
   return `${qi(alias)}.${qi(c.schema)}.${qi(c.table)}`;
 }
 
+/** DirectQuery on a driver source: fetch the query again into the same cache file (the model view reads it). */
+async function refetch(source) {
+  const c = source.db;
+  if (!c || !ADAPTERS[c.kind]) return false;
+  const file = path.join(cacheDir(), cacheKey(keyOf(c), sourceSql(c)) + '.parquet');
+  const tmp = file + '.new.parquet';
+  await fetchToParquet(ADAPTERS[c.kind], await driverHandle(c), sourceSql(c), tmp, db);
+  fs.renameSync(tmp, file);
+  fetched.set(file, true);
+  return true;
+}
+
 /** Saved database credentials (keys only, never the secrets) for Impostazioni origine dati. */
 function savedKeys() { return Object.keys(loadStore()).sort(); }
 
@@ -203,4 +215,4 @@ function forgetKey(key) {
   if (key in store) { delete store[key]; fs.writeFileSync(credFile(), JSON.stringify(store, null, 2), { mode: 0o600 }); }
 }
 
-module.exports = { connect, sourceExpr, forget, keyOf, preview, clearCache, savedKeys, forgetKey };
+module.exports = { connect, sourceExpr, refetch, forget, keyOf, preview, clearCache, savedKeys, forgetKey };

@@ -33,7 +33,12 @@ export interface TableMeta {
   dataCategory?: Record<string, string>;
   /** Field parameter: the label column, and the field each label stands for (in order). */
   fieldParam?: { column: string; fields: ParamField[] };
+  /** Modalità di archiviazione (Power BI storage mode): undefined = import; directQuery = DuckDB view over the
+   *  source, read on every query; dual = imported, marked dual (like Power BI, results equal import). */
+  storageMode?: StorageMode;
 }
+
+export type StorageMode = 'import' | 'directQuery' | 'dual';
 
 export interface ParamField { label: string; table: string; column: string; measure?: boolean; }
 
@@ -247,6 +252,8 @@ export interface Page {
   backgroundFit?: 'Fit' | 'Fill' | 'Normal';
   wallpaper?: string;
   hidden?: boolean;
+  /** Aggiornamento automatico pagina (Power BI: DirectQuery pages; fixed interval). */
+  autoRefresh?: { seconds: number };
   /** Section name in the Power BI file (target of page-navigation buttons). */
   pbiName?: string;
   /** Drill-through target: fields that receive the filter from the source data point. */
@@ -295,6 +302,25 @@ export interface Bookmark {
 export type Cardinality = 'manyToOne' | 'oneToOne' | 'manyToMany';
 
 /** Normalised like Power BI: `from` is the many side, `to` the one side (for *:1). */
+/** Aggiornamento incrementale (TMSL refreshPolicy): keep `archive` periods before the refresh date, reload the last
+ *  `incremental` periods on every refresh. `column` is the date column filtered by RangeStart/RangeEnd. */
+export type PolicyUnit = 'day' | 'month' | 'quarter' | 'year';
+export interface RefreshPolicy {
+  table: string; column: string;
+  archive: { n: number; unit: PolicyUnit }; incremental: { n: number; unit: PolicyUnit };
+  /** Aggiorna solo giorni (periodi) completi: the current period is not loaded. */
+  completeOnly?: boolean;
+  /** Rileva modifiche dei dati: a period is reloaded only when the maximum of this column changed. */
+  detectChanges?: string;
+  /** Ottieni i dati più recenti in tempo reale con DirectQuery (hybrid table): the current period is read live. */
+  realTime?: boolean;
+}
+
+/** Gestisci aggregazioni: summarization of an aggregation table column (TMSL alternateOf). */
+export type AggSummarization = 'groupBy' | 'sum' | 'count' | 'min' | 'max' | 'countRows';
+/** Aggregation table `table` answering queries on `detail`: aggregation column → mapping (detail column; none for countRows). */
+export interface AggTable { table: string; detail: string; precedence?: number; columns: Record<string, { summarization: AggSummarization; column?: string }> }
+
 export interface Relationship {
   id: string;
   fromTable: string;
@@ -365,6 +391,10 @@ export interface Report {
   functions?: DaxFunction[];
   /** Calendari (Strumenti tabella › Opzioni calendario). */
   calendars?: CalendarDef[];
+  /** Gestisci aggregazioni: aggregation tables (hidden in the Data pane) and their mappings to detail tables. */
+  aggregations?: AggTable[];
+  /** Aggiornamento incrementale per table. */
+  refreshPolicies?: RefreshPolicy[];
   /** Power Query queries that are not loaded in the model (Abilita caricamento off): functions, helper queries. */
   pqQueries?: { name: string; code: string }[];
   /** Power Query groups: query name → group path ("Origini/Vendite"). */
@@ -402,7 +432,8 @@ export interface SensitivityLabel { name: string; id?: string; tenant?: string; 
 /** A custom visual package: the .pbiviz.json resource (visual, capabilities, content.js/css…) and its package.json. */
 export interface CustomVisualPkg { guid: string; pbiviz: any; package?: any; }
 
-export interface PQParam { name: string; type: 'text' | 'number' | 'date'; value: string; description?: string; }
+/** `datetime` values are "YYYY-MM-DD HH:MM:SS" (RangeStart/RangeEnd of incremental refresh). */
+export interface PQParam { name: string; type: 'text' | 'number' | 'date' | 'datetime'; value: string; description?: string; }
 
 export interface CrossFilter {
   visualId: string;

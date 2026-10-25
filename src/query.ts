@@ -3,6 +3,7 @@ import { measureFormatSql, measureSql, type Model } from './dax';
 import { isNumeric, monthNames, quarterPrefix } from './format';
 import { visualDef } from './visuals/catalog';
 import { cfInput, fieldKey } from './visuals/condfmt';
+import { aggOrigin, rewriteForAggregations } from './aggregations';
 
 
 export const NULL_KEY = '__NULL__';
@@ -21,6 +22,8 @@ export interface VisualQuery {
   colTotalsSql?: string;  // matrix: one row per column value
   rowTotalsSql?: string;  // matrix: one row per row group
   items: QueryItem[];
+  /** Aggregation table that answered the query (Gestisci aggregazioni). */
+  aggTable?: string;
 }
 /** Values (IN list), or a range / text condition from range, relative date and text slicers. */
 export interface FilterSpec { table: string; column: string; values: string[]; datePart?: DatePart; range?: RangeCond; contains?: string; textMode?: TextMode; }
@@ -285,7 +288,7 @@ export function underlyingQuery(v: Visual, tables: TableMeta[], rels: Relationsh
 
 /** Model properties the DAX compiler needs besides tables/relationships/measures. */
 export function modelExtras(r: Report, user?: string): Omit<Model, 'tables' | 'rels' | 'measures'> {
-  return { dateTables: r.dateTables, calcGroups: r.calcGroups, functions: r.functions, calendars: r.calendars, ...(user ? { user } : {}) };
+  return { dateTables: r.dateTables, calcGroups: r.calcGroups, functions: r.functions, calendars: r.calendars, ...(r.aggregations?.length ? { aggregations: r.aggregations } : {}), ...(user ? { user } : {}) };
 }
 
 /* ------------------------------------------------------------------ */
@@ -439,6 +442,12 @@ export function buildVisualQuery(
     }
     if (changed) v = { ...v, fields };
   }
+  // Aggregation tables answer the query when they cover all its fields and filters.
+  let aggTable: string | undefined;
+  if (modelExtras.aggregations?.length && v.type !== 'slicer') {
+    const r = rewriteForAggregations(modelExtras.aggregations, tables.map((t) => t.name), rels, v, filters, visuals, cross);
+    if (r) { v = r.v; filters = r.filters; visuals = r.visuals; cross = r.cross; aggTable = r.table; }
+  }
   const def = visualDef(v.type, v.custom);
   const items: QueryItem[] = [];
   // Hierarchy axis: only the current drill level (or, with "expand all", every level down to it);
@@ -562,6 +571,11 @@ export function buildVisualQuery(
         if ('sql' in rt) out.rowTotalsSql = finalize(rt, rowDims, measures);
       }
     }
+  }
+  if (aggTable) {
+    // Labels, formats and conditional formatting keep the detail fields the user placed.
+    for (const it of items) it.field = aggOrigin.get(it.field) ?? it.field;
+    out.aggTable = aggTable;
   }
   return out;
 }

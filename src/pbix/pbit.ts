@@ -10,6 +10,7 @@ import { appendSteps, mName, mStr, mText } from '../pq/m';
 import { buildLayout, DATE_HIERARCHY } from './layout';
 import { layoutToPbir } from './pbir';
 import { tmslToTmdl } from './tmdl';
+import { pollingM } from '../incremental';
 
 export interface PbitPart { path: string; utf16?: string; utf8bom?: string; utf8?: string; dataUrl?: string; }
 
@@ -131,6 +132,30 @@ function sourceM(t: Pick<TableMeta, 'source'>, columns: ColumnMeta[]): string {
   return `let\n    Origine = Csv.Document(${contents})\nin\n    Origine`;
 }
 
+/** TMSL refreshPolicy (Aggiornamento incrementale): the partitions are created by the service. */
+function refreshPolicyOf(report: Report, t: TableMeta) {
+  const p = report.refreshPolicies?.find((x) => x.table === t.name);
+  if (!p || t.source.dax) return null;
+  return {
+    policyType: 'basic',
+    rollingWindowGranularity: p.archive.unit, rollingWindowPeriods: p.archive.n,
+    incrementalGranularity: p.incremental.unit, incrementalPeriods: p.incremental.n,
+    ...(p.completeOnly && !p.realTime ? { incrementalPeriodsOffset: -1 } : {}),
+    ...(p.realTime ? { mode: 'hybrid' } : {}),
+    ...(p.detectChanges ? { pollingExpression: pollingM(mExpression(t), p.detectChanges).split('\n') } : {}),
+    sourceExpression: mExpression(t).split('\n'),
+  };
+}
+
+/** TMSL alternateOf of an aggregation table column (Gestisci aggregazioni): Count of a table = baseTable. */
+function alternateOf(report: Report, table: string, column: string) {
+  const a = report.aggregations?.find((x) => x.table === table);
+  const m = a?.columns[column];
+  if (!a || !m) return null;
+  if (m.summarization === 'countRows') return { summarization: 'count', baseTable: a.detail };
+  return { summarization: m.summarization, baseColumn: { table: a.detail, column: m.column } };
+}
+
 /** Full M of a query: source followed by its applied steps (Editor avanzato, .pbit partitions). */
 export function queryM(t: Pick<TableMeta, 'source' | 'steps'>, sourceColumns: ColumnMeta[]): string {
   // M queries keep their own code.
@@ -241,7 +266,8 @@ export function buildModelSchema(report: Report, tables: TableMeta[], autoDates 
   return {
     name: crypto.randomUUID(),
     // Calendars need compatibility level 1701, user-defined functions 1702.
-    compatibilityLevel: report.functions?.length ? 1702 : report.calendars?.length ? 1701 : 1550,
+    // Hybrid tables (incremental refresh with real-time DirectQuery) need 1565.
+    compatibilityLevel: report.functions?.length ? 1702 : report.calendars?.length ? 1701 : report.refreshPolicies?.some((p) => p.realTime) ? 1565 : 1550,
     model: {
       culture: locale(),
       dataAccessOptions: { legacyRedirects: true, returnErrorValuesAsNull: true },
@@ -252,6 +278,9 @@ export function buildModelSchema(report: Report, tables: TableMeta[], autoDates 
         name: t.name,
         lineageTag: crypto.randomUUID(),
         ...(report.dateTables?.[t.name] ? { dataCategory: 'Time' } : {}),
+        // Aggregation tables must be hidden (Power BI rejects visible ones).
+        ...(report.aggregations?.some((a) => a.table === t.name) ? { isHidden: true } : {}),
+        ...(refreshPolicyOf(report, t) ? { refreshPolicy: refreshPolicyOf(report, t) } : {}),
         columns: t.columns.map((c) => {
           const tt = tomType(c.type);
           const calc = t.calcColumns?.find((x) => x.name === c.name);
@@ -264,6 +293,7 @@ export function buildModelSchema(report: Report, tables: TableMeta[], autoDates 
             summarizeBy: numeric(tt.dataType) ? 'sum' : 'none',
             ...(tt.dataType === 'dateTime' ? { formatString: tt.m === 'type date' ? 'Short Date' : 'General Date' } : {}),
             ...(t.sortBy?.[c.name] ? { sortByColumn: t.sortBy[c.name] } : {}),
+            ...(alternateOf(report, t.name, c.name) ? { alternateOf: alternateOf(report, t.name, c.name) } : {}),
             ...(t.dataCategory?.[c.name] ? { dataCategory: t.dataCategory[c.name] } : {}),
             ...(report.dateTables?.[t.name] === c.name ? { isKey: true } : {}),
             ...(folderOf(t.name, c.name) ? { displayFolder: folderOf(t.name, c.name) } : {}),
@@ -272,7 +302,7 @@ export function buildModelSchema(report: Report, tables: TableMeta[], autoDates 
           };
         }),
         partitions: [{
-          name: `${t.name}-${crypto.randomUUID().slice(0, 8)}`, mode: 'import',
+          name: `${t.name}-${crypto.randomUUID().slice(0, 8)}`, mode: t.source.dax ? 'import' : t.storageMode ?? 'import',
           ...(report.pqGroups?.[t.name] && !t.source.dax ? { queryGroup: report.pqGroups[t.name] } : {}),
           source: t.source.dax ? { type: 'calculated', expression: t.source.dax.split('\n') } : { type: 'm', expression: mExpression(t).split('\n') },
         }],
@@ -299,8 +329,10 @@ export function buildModelSchema(report: Report, tables: TableMeta[], autoDates 
           annotations: [{ name: 'PBI_ResultType', value: /^\s*\(/.test(q.code) ? 'Function' : 'Table' }],
         })), ...(report.pqParams ?? []).map((p) => {
           const d = /^(\d{4})-(\d{2})-(\d{2})/.exec(p.value);
-          const lit = p.type === 'number' ? (Number.isFinite(Number(p.value)) ? String(Number(p.value)) : '0') : p.type === 'date' && d ? `#date(${+d[1]}, ${+d[2]}, ${+d[3]})` : mStr(p.value);
-          const type = p.type === 'number' ? 'Number' : p.type === 'date' ? 'Date' : 'Text';
+          const t = /(\d{2}):(\d{2})(?::(\d{2}))?/.exec(p.value.slice(10));
+          const lit = p.type === 'number' ? (Number.isFinite(Number(p.value)) ? String(Number(p.value)) : '0') : p.type === 'date' && d ? `#date(${+d[1]}, ${+d[2]}, ${+d[3]})`
+            : p.type === 'datetime' && d ? `#datetime(${+d[1]}, ${+d[2]}, ${+d[3]}, ${+(t?.[1] ?? 0)}, ${+(t?.[2] ?? 0)}, ${+(t?.[3] ?? 0)})` : mStr(p.value);
+          const type = p.type === 'number' ? 'Number' : p.type === 'date' ? 'Date' : p.type === 'datetime' ? 'DateTime' : 'Text';
           return { name: p.name, kind: 'm', expression: `${lit} meta [IsParameterQuery=true, Type="${type}", IsParameterQueryRequired=true]`, lineageTag: crypto.randomUUID(), ...(p.description ? { description: p.description } : {}) };
         })],
       } : {}),

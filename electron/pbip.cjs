@@ -30,7 +30,9 @@ function fromTmsl(schema, out) {
   for (const r of model.relationships ?? []) pushRel(out, r);
   pushParams(out, (model.expressions ?? []).map((e) => ({ name: e.name, expression: joinExpr(e.expression), description: e.description })));
   const mx = extras(out);
-  pushQueries(mx, (model.expressions ?? []).map((e) => ({ name: e.name, code: joinExpr(e.expression), group: e.queryGroup, kind: e.kind })), (model.tables ?? []).map((t) => ({ name: t.name, group: (t.partitions ?? []).find((p) => p.queryGroup)?.queryGroup })));
+  pushQueries(mx, (model.expressions ?? []).map((e) => ({ name: e.name, code: joinExpr(e.expression), group: e.queryGroup, kind: e.kind })), (model.tables ?? []).map((t) => ({ name: t.name, group: (t.partitions ?? []).find((p) => p.queryGroup)?.queryGroup, mode: (t.partitions ?? [])[0]?.mode })));
+  for (const t of model.tables ?? []) if (t.refreshPolicy) pushPolicy(mx, t.name, t.refreshPolicy);
+  pushAggs(mx, (model.tables ?? []).flatMap((t) => (t.columns ?? []).filter((c) => c.alternateOf?.summarization).map((c) => ({ table: t.name, column: c.name, summarization: c.alternateOf.summarization, detail: c.alternateOf.baseColumn?.table ?? c.alternateOf.baseTable, baseColumn: c.alternateOf.baseColumn?.column }))));
   for (const t of model.tables ?? []) {
     for (const h of t.hierarchies ?? []) {
       mx.hierarchies.push({ table: t.name, name: h.name, levels: [...(h.levels ?? [])].sort((a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0)).map((l) => ({ name: l.name, column: l.column })) });
@@ -89,12 +91,47 @@ function pushQueries(mx, exprs, tables) {
     if ((e.kind ?? 'm') === 'm' && !/IsParameterQuery\s*=\s*true/i.test(e.code ?? '')) mx.queries.push({ name: e.name, code: e.code });
     if (e.group) mx.groups[e.name] = unquote(e.group);
   }
-  for (const t of tables) if (t.group) mx.groups[t.name] = unquote(t.group);
+  for (const t of tables) {
+    if (t.group) mx.groups[t.name] = unquote(t.group);
+    if (t.mode === 'directQuery' || t.mode === 'dual') mx.storage[t.name] = t.mode;
+  }
+}
+
+/** Aggregation columns ({ table, column, summarization, detail, baseColumn }) → Report.aggregations entries. */
+function pushAggs(mx, cols) {
+  const byTable = new Map();
+  for (const c of cols) {
+    if (!c.summarization || !c.detail) continue;
+    const a = byTable.get(c.table) ?? { table: c.table, detail: c.detail, columns: {} };
+    byTable.set(c.table, a);
+    a.columns[c.column] = c.summarization === 'count' && !c.baseColumn ? { summarization: 'countRows' } : { summarization: c.summarization, column: c.baseColumn };
+  }
+  mx.aggregations.push(...byTable.values());
+}
+/** refreshPolicy (TMSL object or TMDL props) → Report.refreshPolicies entry; the date column comes from the RangeStart filter. */
+function pushPolicy(mx, table, rp) {
+  const text = (v) => (Array.isArray(v) ? v.join('\n') : String(v ?? ''));
+  const src = text(rp.sourceExpression), poll = text(rp.pollingExpression);
+  const col = /\[([^\]]+)\]\s*>=?\s*RangeStart/.exec(src) ?? /\[([^\]]+)\]\s*<\s*RangeEnd/.exec(src);
+  const dc = [...poll.matchAll(/\[([^\]]+)\]/g)].pop();
+  mx.refreshPolicies.push({
+    table, column: col ? col[1] : '',
+    archive: { n: Number(rp.rollingWindowPeriods) || 1, unit: rp.rollingWindowGranularity || 'year' },
+    incremental: { n: Number(rp.incrementalPeriods) || 1, unit: rp.incrementalGranularity || 'day' },
+    ...(Number(rp.incrementalPeriodsOffset) < 0 && rp.mode !== 'hybrid' ? { completeOnly: true } : {}),
+    ...(rp.mode === 'hybrid' ? { realTime: true } : {}),
+    ...(dc ? { detectChanges: dc[1] } : {}),
+  });
+}
+/** TMDL object reference Table.Column ('Quoted name'.Column). */
+function splitRef(r) {
+  const m = /^('(?:[^']|'')*'|[^.]+)\.(.+)$/.exec(String(r ?? '').trim());
+  return m ? [unquote(m[1]), unquote(m[2])] : [unquote(String(r ?? '').trim()), undefined];
 }
 
 /** Model properties besides tables/relationships/measures (same shape as read_pbix.py). */
 function extras(out) {
-  out.model ??= { hierarchies: [], folders: [], dateTables: {}, calcGroups: [], roles: [], functions: [], calendars: [], cultures: [], queries: [], groups: {} };
+  out.model ??= { hierarchies: [], folders: [], dateTables: {}, calcGroups: [], roles: [], functions: [], calendars: [], cultures: [], queries: [], groups: {}, storage: {}, aggregations: [], refreshPolicies: [] };
   return out.model;
 }
 
@@ -191,7 +228,7 @@ function parseTmdl(text) {
     const ind = indentOf(line);
     while (stack.length > 1 && stack[stack.length - 1].indent >= ind) stack.pop();
     const parent = stack[stack.length - 1];
-    const kw = /^(table|column|measure|partition|relationship|hierarchy|level|annotation|expression|model|database|role|tablePermission|culture|calculationGroup|calculationItem|perspective|dataSource|ref|cultureInfo|linguisticMetadata|variation|changedProperty|extendedProperty|queryGroup|function|calendar|calendarColumnGroup)\b(?!\s*:)\s*(.*)$/.exec(t);
+    const kw = /^(table|column|measure|partition|relationship|hierarchy|level|annotation|expression|model|database|role|tablePermission|culture|calculationGroup|calculationItem|perspective|dataSource|ref|cultureInfo|linguisticMetadata|variation|changedProperty|extendedProperty|queryGroup|function|calendar|calendarColumnGroup|alternateOf|refreshPolicy|perspectiveTable|perspectiveColumn|perspectiveMeasure|perspectiveHierarchy|columnPermission)\b(?!\s*:)\s*(.*)$/.exec(t);
     if (kw) {
       const [name, rest] = takeName(kw[2]);
       const obj = { kind: kw[1], name, props: {}, children: [], indent: ind, ...(doc.length ? { description: doc.join('\n') } : {}) };
@@ -258,7 +295,12 @@ function fromTmdl(dir, out) {
   pushParams(out, objs.filter((o) => o.kind === 'expression').map((e) => ({ name: e.name, expression: e.value ?? '', description: e.description ?? e.props.description })));
   const mx = extras(out);
   pushQueries(mx, objs.filter((o) => o.kind === 'expression').map((e) => ({ name: e.name, code: e.value ?? '', group: e.props.queryGroup })),
-    objs.filter((o) => o.kind === 'table').map((t) => ({ name: t.name, group: t.children.find((c) => c.kind === 'partition' && c.props.queryGroup)?.props.queryGroup })));
+    objs.filter((o) => o.kind === 'table').map((t) => ({ name: t.name, group: t.children.find((c) => c.kind === 'partition' && c.props.queryGroup)?.props.queryGroup, mode: t.children.find((c) => c.kind === 'partition')?.props.mode })));
+  for (const t of objs.filter((o) => o.kind === 'table')) { const rp = t.children.find((c) => c.kind === 'refreshPolicy'); if (rp) pushPolicy(mx, t.name, rp.props); }
+  pushAggs(mx, objs.filter((o) => o.kind === 'table').flatMap((t) => t.children.filter((c) => c.kind === 'column').flatMap((c) => c.children.filter((a) => a.kind === 'alternateOf').map((a) => {
+    const [bt, bc] = a.props.baseColumn ? splitRef(a.props.baseColumn) : [unquote(a.props.baseTable), undefined];
+    return { table: t.name, column: c.name, summarization: a.props.summarization, detail: bt, baseColumn: bc };
+  }))));
   for (const t of objs.filter((o) => o.kind === 'table')) {
     for (const h of t.children.filter((c) => c.kind === 'hierarchy')) {
       mx.hierarchies.push({ table: t.name, name: h.name, levels: h.children.filter((l) => l.kind === 'level').map((l) => ({ name: l.name, column: unquote(l.props.column) ?? l.name })) });

@@ -24,6 +24,7 @@ const DAY = 86400000;
 function paramValue(p: PQParam): unknown {
   if (p.type === 'number') return Number(p.value);
   if (p.type === 'date') { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(p.value); if (m) return MDate.of(+m[1], +m[2], +m[3]); }
+  if (p.type === 'datetime') { const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/.exec(p.value); if (m) return new MDateTime(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] ?? 0))); }
   return p.value;
 }
 

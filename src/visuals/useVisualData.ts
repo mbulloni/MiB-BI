@@ -148,7 +148,7 @@ export function useVisualData(v: Visual): VisualData {
       const t1 = performance.now();
       setState({ loading: false, empty: false, ...out, ...(hl ? { highlight: hl.rows } : {}) });
       // Rendering time: until the browser has painted the new data.
-      requestAnimationFrame(() => setTimeout(() => recordPerf({ visualId: v.id, at: Date.now(), queryMs: t1 - t0, renderMs: performance.now() - t1, rows: res.rows.length, sql: q.sql })));
+      requestAnimationFrame(() => setTimeout(() => recordPerf({ visualId: v.id, at: Date.now(), queryMs: t1 - t0, renderMs: performance.now() - t1, rows: res.rows.length, sql: q.sql, ...(storageOf(q) ? { storage: storageOf(q) } : {}) })));
     }).catch((e) => {
       if (live) recordPerf({ visualId: v.id, at: Date.now(), queryMs: performance.now() - t0, renderMs: 0, rows: 0, sql: q.sql, error: e.message });
       if (live) setState({ loading: false, empty: false, error: e.message, items: q.items, rows: [] });
@@ -165,7 +165,14 @@ export function useVisualData(v: Visual): VisualData {
 
 /** Runs an ad-hoc query shaped like visual `v` (its wells), on `v`'s page with every filter in scope,
  *  plus `extra` filters. Used by visuals that need several queries (decomposition tree, key influencers, narrative). */
-export async function runVisualQuery(v: Visual, extra: import('../types').Filter[] = []): Promise<{ items: import('../query').QueryItem[]; rows: Record<string, any>[] }> {
+/** Analizzatore prestazioni: aggregation table used, or DirectQuery tables read by the query. */
+function storageOf(q: { sql: string; aggTable?: string }): string | undefined {
+  if (q.aggTable) return `Aggregazione: ${q.aggTable}`;
+  const dq = useStore.getState().tables.filter((t) => t.storageMode === 'directQuery' && q.sql.includes('"' + t.name.replace(/"/g, '""') + '"'));
+  return dq.length ? `DirectQuery: ${dq.map((t) => t.name).join(', ')}` : undefined;
+}
+
+export async function runVisualQuery(v: Visual, extra: import('../types').Filter[] = []): Promise<{ items: import('../query').QueryItem[]; rows: Record<string, any>[]; aggTable?: string }> {
   const s = useStore.getState();
   const page = s.report.pages.find((p) => p.visuals.some((x) => x.id === v.id)) ?? s.page();
   const c = s.crossFilter && s.crossFilter.visualId !== v.id && interactionOf(s.report, page, s.crossFilter.visualId, v) !== 'filter' ? null : s.crossFilter;
@@ -174,7 +181,7 @@ export async function runVisualQuery(v: Visual, extra: import('../types').Filter
   if (!q) return { items: [], rows: [] };
   if ('error' in q) throw new Error(q.error);
   const res = await api.queryAs(q.sql);
-  return { items: q.items, rows: res.rows };
+  return { items: q.items, rows: res.rows, ...(q.aggTable ? { aggTable: q.aggTable } : {}) };
 }
 
 /** The data of visual `v` with its visual calculations and totals (scripted tests, `window.__mibbiCalc`). */

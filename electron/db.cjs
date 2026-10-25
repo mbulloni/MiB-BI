@@ -107,6 +107,7 @@ async function preview(file, sheet) {
 
 async function describe(table) {
   const res = await query(`DESCRIBE ${qi(table)}`);
+  if (dq.has(table)) res.rows = res.rows.filter((r) => r.column_name !== 'rowid');
   const count = await query(`SELECT COUNT(*) AS n FROM ${qi(table)}`);
   return {
     name: table,
@@ -122,16 +123,60 @@ async function importFile(file, tableName, sheet) {
   return describe(tableName);
 }
 
-// Power Query result (SQL compiled by src/pq/compile.ts) materialised as a model table.
-async function materialize(tableName, sql) {
+// DirectQuery tables are views over the source query (read live on every visual query). Report SQL needs a
+// row identity (`t.rowid`): the view exposes a `rowid` column numbered in the order of all columns, so two scans
+// in the same query agree. Calculated columns stack one view per column (`__dq_<table>_<i>`).
+const dq = new Map(); // table → { sql, calcs: [{ column, expr }] }
+const dqLevel = (table, i) => qi(`__dq_${table}_${i}`);
+
+async function dropObject(c, name) {
+  const v = await c.runAndReadAll(`SELECT count(*) FROM duckdb_views() WHERE view_name = ${ql(name)} AND schema_name = 'main'`);
+  await c.run(Number(v.getRows()[0][0]) ? `DROP VIEW IF EXISTS ${qi(name)}` : `DROP TABLE IF EXISTS ${qi(name)}`);
+}
+async function dropDq(c, table) {
+  const d = dq.get(table);
+  if (!d) return;
+  dq.delete(table);
+  await c.run(`DROP VIEW IF EXISTS ${qi(table)}`);
+  for (let i = d.calcs.length; i >= 0; i--) await c.run(`DROP VIEW IF EXISTS ${dqLevel(table, i)}`);
+}
+
+/** (Re)creates the view chain of a DirectQuery table. Self-references in calculated column expressions
+ *  ("Table" not after a dot) point at the previous level, so the view never reads itself. */
+async function buildDq(c, table) {
+  const d = dq.get(table);
+  const cols = (await c.runAndReadAll(`DESCRIBE SELECT * FROM (${d.sql})`)).getRowObjectsJson().map((r) => r.column_name).filter((n) => n !== 'rowid');
+  await c.run(`CREATE OR REPLACE VIEW ${dqLevel(table, 0)} AS SELECT *, row_number() OVER (ORDER BY ${cols.map(qi).join(', ') || '1'}) AS rowid FROM (${d.sql})`);
+  const self = new RegExp(`(?<![.\\w"])${qi(table).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g');
+  for (let i = 0; i < d.calcs.length; i++) {
+    const x = d.calcs[i];
+    await c.run(`CREATE OR REPLACE VIEW ${dqLevel(table, i + 1)} AS SELECT r.*, (${x.expr.replace(self, dqLevel(table, i))}) AS ${qi(x.column)} FROM ${dqLevel(table, i)} r`);
+  }
+  await c.run(`CREATE OR REPLACE VIEW ${qi(table)} AS SELECT * FROM ${dqLevel(table, d.calcs.length)}`);
+}
+
+// Power Query result (SQL compiled by src/pq/compile.ts) materialised as a model table, or a view (DirectQuery).
+async function materialize(tableName, sql, mode) {
   const c = await connection();
-  await c.run(`CREATE OR REPLACE TABLE ${qi(tableName)} AS ${sql}`);
+  if (dq.has(tableName)) await dropDq(c, tableName);
+  else await dropObject(c, tableName);
+  if (mode === 'directQuery') {
+    dq.set(tableName, { sql, calcs: [] });
+    try { await buildDq(c, tableName); } catch (e) { await dropDq(c, tableName).catch(() => {}); throw e; }
+  } else await c.run(`CREATE TABLE ${qi(tableName)} AS ${sql}`);
   return describe(tableName);
 }
 
 // Calculated column: rebuilds the table with the column appended (row order kept).
 async function addCalcColumn(table, column, expr, replace) {
   const c = await connection();
+  const d = dq.get(table);
+  if (d) {
+    const i = d.calcs.findIndex((x) => x.column === column);
+    if (i >= 0) d.calcs[i] = { column, expr }; else d.calcs.push({ column, expr });
+    await buildDq(c, table);
+    return describe(table);
+  }
   const tmp = '__mibbi_calc';
   await c.run(`CREATE OR REPLACE TABLE ${qi(tmp)} AS SELECT r.*${replace ? ` EXCLUDE (${qi(column)})` : ''}, (${expr}) AS ${qi(column)} FROM ${qi(table)} r ORDER BY r.rowid`);
   await c.run(`DROP TABLE ${qi(table)}`);
@@ -141,18 +186,27 @@ async function addCalcColumn(table, column, expr, replace) {
 
 async function dropColumn(table, column) {
   const c = await connection();
+  const d = dq.get(table);
+  if (d) {
+    if (!d.calcs.some((x) => x.column === column)) throw new Error(`${column}: in una tabella DirectQuery si possono rimuovere solo le colonne calcolate.`);
+    d.calcs = d.calcs.filter((x) => x.column !== column);
+    await c.run(`DROP VIEW IF EXISTS ${dqLevel(table, d.calcs.length + 1)}`);
+    await buildDq(c, table);
+    return describe(table);
+  }
   await c.run(`ALTER TABLE ${qi(table)} DROP COLUMN ${qi(column)}`);
   return describe(table);
 }
 
 async function exportParquet(table, file) {
   const c = await connection();
-  await c.run(`COPY (SELECT * FROM ${qi(table)}) TO ${ql(file)} (FORMAT parquet, COMPRESSION zstd)`);
+  await c.run(`COPY (SELECT *${dq.has(table) ? ' EXCLUDE (rowid)' : ''} FROM ${qi(table)}) TO ${ql(file)} (FORMAT parquet, COMPRESSION zstd)`);
 }
 
 async function dropTable(name) {
   const c = await connection();
-  await c.run(`DROP TABLE IF EXISTS ${qi(name)}`);
+  if (dq.has(name)) await dropDq(c, name);
+  else await dropObject(c, name);
 }
 
 // Empty typed table: schema-only imports (.pbit whose sources are not reachable).
@@ -160,6 +214,7 @@ const TOM_TYPES = { int64: 'BIGINT', double: 'DOUBLE', decimal: 'DOUBLE', boolea
 async function createEmpty(table, columns) {
   const c = await connection();
   const cols = columns.map((x) => `${qi(x.name)} ${TOM_TYPES[x.dataType] || 'VARCHAR'}`).join(', ');
+  if (dq.has(table)) await dropDq(c, table);
   await c.run(`CREATE OR REPLACE TABLE ${qi(table)} (${cols || '"_" VARCHAR'})`);
   return describe(table);
 }

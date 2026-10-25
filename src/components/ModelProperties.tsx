@@ -1,7 +1,8 @@
 // Proprietà of a model object (Data pane › Proprietà): display folder of a field, user hierarchy levels,
 // "Contrassegna come tabella delle date", calculation group precedence and column name.
 import { useEffect, useState } from 'react';
-import { useStore } from '../store';
+import { dqCapable, useStore } from '../store';
+import type { StorageMode } from '../types';
 import { isDate } from '../format';
 import { levelName } from '../types';
 import { Icon } from './icons';
@@ -13,6 +14,7 @@ export function ModelProperties() {
   const [name, setName] = useState('');
   const [dateCol, setDateCol] = useState('');
   const [prec, setPrec] = useState('0');
+  const [mode, setMode] = useState<StorageMode>('import');
   const [err, setErr] = useState<string | null>(null);
   const key = tg ? tg.table + '\u0001' + (tg.hierarchy ?? tg.field ?? '') : '';
   const g = tg ? s.report.calcGroups?.find((x) => x.table === tg.table) : undefined;
@@ -22,6 +24,7 @@ export function ModelProperties() {
     setName(tg.hierarchy ?? g?.column ?? '');
     setDateCol(s.report.dateTables?.[tg.table] ?? '');
     setPrec(String(g?.precedence ?? 0));
+    setMode(s.tables.find((x) => x.name === tg.table)?.storageMode ?? 'import');
     setErr(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
@@ -52,6 +55,7 @@ export function ModelProperties() {
         const e = await s.setDateTable(tg.table, dateCol || null);
         if (e) { setErr(`Impossibile contrassegnare come tabella delle date: ${e}`); return; }
       }
+      if (mode !== (t.storageMode ?? 'import')) { close(); await s.setStorageMode(tg.table, mode); return; }
     }
     close();
   };
@@ -95,6 +99,18 @@ export function ModelProperties() {
               <span className="hint">Con più gruppi di calcolo, quello con precedenza maggiore viene applicato per primo (più esterno).</span></label>
             <label className="pq-field">Nome della colonna<input type="text" value={name} onChange={(e) => setName(e.target.value)} /></label>
           </>}
+          {!field && !g && t && !t.source.dax && (
+            <div className="pq-field">Modalità di archiviazione
+              <select value={mode} onChange={(e) => setMode(e.target.value as StorageMode)}>
+                <option value="import">Importazione</option>
+                <option value="directQuery" disabled={!dqCapable(t)}>DirectQuery</option>
+                <option value="dual">Doppia</option>
+              </select>
+              <span className="hint">{mode === 'directQuery' ? 'I dati restano nell\'origine: ogni oggetto visivo li legge al momento della query (vista sul database).'
+                : mode === 'dual' ? 'Tabella importata che Power BI può anche interrogare in DirectQuery insieme alle tabelle DirectQuery; in MiB-BI si comporta come Importazione.'
+                : 'I dati vengono copiati nel modello e riletti con Aggiorna.'}{!dqCapable(t) ? ' DirectQuery è disponibile solo per le origini database.' : ''}</span>
+            </div>
+          )}
           {!field && !g && t && (
             <div className="pq-field">Contrassegna come tabella delle date
               <span className="hint">Le funzioni di Business Intelligence per le gerarchie temporali usano questa tabella; la colonna deve avere date univoche, senza valori vuoti e senza giorni mancanti.</span>

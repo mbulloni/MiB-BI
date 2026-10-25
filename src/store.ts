@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { globalOptions } from './options';
 import { api, type UpdateInfo } from './api';
-import type { Bookmark, CrossFilter, DbConnection, FieldRef, Filter, Interaction, NewStep, Page, PQParam, PQType, Relationship, Report, Step, Theme, TableMeta, View, Visual, VisualFormat, VisualType } from './types';
+import type { Bookmark, CrossFilter, DbConnection, FieldRef, Filter, Interaction, NewStep, Page, PQParam, PQType, Relationship, Report, Step, Theme, TableMeta, StorageMode, AggTable, RefreshPolicy, View, Visual, VisualFormat, VisualType } from './types';
 import { interactionKey } from './visuals/interactions';
 import { propagateSync } from './visuals/sync';
 import { refLabel, isNumeric, setCaptions, uid } from './format';
@@ -9,7 +9,9 @@ import { customName, setCustomVisuals, visualDef } from './visuals/catalog';
 import { CF_WELL, connected, modelExtras, NULL_KEY, qi, ql } from './query';
 import { daxShow, daxStore } from './dax/separators';
 import { calcColumnSql, calcTableSql, checkCalcItem, checkFunction, checkMeasure, parse, parseQuery, rlsWhere, type Model } from './dax';
-import { inlineParamsInM, paramFromM, resolveSource, setParams } from './pq/params';
+import { inlineParamsInM, paramFromM, resolveSource, setParams, withParams } from './pq/params';
+import { partitions, policyWindow, ts, type PartitionInfo } from './incremental';
+import { appendStep } from './pq/m/edit';
 import { inlineFromM } from './pq/mparse';
 import { parseLayout, setCfExportRanges, setHierarchyLevels, themeFromLayout } from './pbix/layout';
 import { runVisualQuery } from './visuals/useVisualData';
@@ -39,7 +41,8 @@ export function isHiddenVisual(p: Page, v: Visual): boolean {
   return false;
 }
 
-export interface PerfEntry { id: number; visualId: string; at: number; queryMs: number; renderMs: number; rows: number; sql: string; error?: string }
+/** `storage`: what answered the query (aggregation table, DirectQuery tables). */
+export interface PerfEntry { id: number; visualId: string; at: number; queryMs: number; renderMs: number; rows: number; sql: string; error?: string; storage?: string }
 let perfSeq = 0;
 /** Analizzatore prestazioni: adds an entry while recording (called by useVisualData). */
 export function recordPerf(e: Omit<PerfEntry, 'id'>) {
@@ -81,7 +84,7 @@ export type FilterScope = 'visual' | 'page' | 'report';
 
 /** Query being edited in the Power Query editor; `orig` is the model table it came from (null = new). */
 /** `load` false = connection-only query (Abilita caricamento off: functions, helper queries), kept in Report.pqQueries. */
-export interface PQQuery { name: string; orig: string | null; source: TableMeta['source']; steps: Step[]; load?: boolean; }
+export interface PQQuery { name: string; orig: string | null; source: TableMeta['source']; steps: Step[]; load?: boolean; storageMode?: StorageMode; }
 /** `step` = number of applied steps shown (null = all, 0 = Origine). */
 /** `groups`: query name → group path (Gruppi di query). */
 export interface PQState { queries: PQQuery[]; selected: string; step: number | null; deleted: string[]; groups?: Record<string, string>; }
@@ -108,6 +111,15 @@ export function compileOpts(defs: QueryDef[], extra: { name: string; code: strin
 
 /** Steps Power BI folds into the previous step of the same kind instead of adding a new one. */
 /** The page holds an "Applica tutti i filtri dei dati" button: slicer changes wait for it. */
+/** DirectQuery is offered, like Power BI, for database sources (and queries that reference one). */
+export function dqCapable(def: QueryDef, all: QueryDef[] = useStore.getState().tables, seen = new Set<string>()): boolean {
+  const s = def.source;
+  if (s.mcode !== undefined || s.dax || s.inline) return false;
+  if (s.db) return true;
+  if (s.ref && !seen.has(s.ref)) { seen.add(s.ref); const r = all.find((x) => x.name === s.ref); return !!r && dqCapable(r, all, seen); }
+  return false;
+}
+
 export function hasApplyAll(p: Page): boolean {
   return p.visuals.some((v) => v.type === 'button' && !isHiddenVisual(p, v) && sp(v, 'visualLink', 'type') === 'ApplyAllSlicers' && sp(v, 'visualLink', 'show') !== false);
 }
@@ -160,8 +172,9 @@ function renameTableInReport(r: Report, from: string, to: string) {
     for (const k of ['table', 'fromTable', 'toTable']) if (o[k] === from) o[k] = to;
     Object.values(o).forEach(walk);
   };
-  walk(r.pages); walk(r.reportFilters); walk(r.relationships); walk(r.measures); walk(r.hierarchies); walk(r.calcGroups); walk(r.roles); walk(r.calendars);
+  walk(r.pages); walk(r.reportFilters); walk(r.relationships); walk(r.measures); walk(r.hierarchies); walk(r.calcGroups); walk(r.roles); walk(r.calendars); walk(r.refreshPolicies);
   if (r.modelLayout[from]) { r.modelLayout[to] = r.modelLayout[from]; delete r.modelLayout[from]; }
+  for (const a of r.aggregations ?? []) { if (a.table === from) a.table = to; if (a.detail === from) a.detail = to; }
   renameInCultures(r, (k) => (k === from ? to : k.startsWith(from + '\u0001') ? to + k.slice(from.length) : null));
   if (r.dateTables?.[from]) { r.dateTables[to] = r.dateTables[from]; delete r.dateTables[from]; }
   for (const k of Object.keys(r.displayFolders ?? {})) {
@@ -194,6 +207,11 @@ function renameColumnInDax(r: Report, table: string, from: string, to: string) {
   }
   for (const g of r.calcGroups ?? []) for (const i of g.items) { i.expression = fix(i.expression); if (i.formatString) i.formatString = fix(i.formatString); }
   for (const role of r.roles ?? []) for (const f of role.filters) f.expression = fix(f.expression);
+  for (const p of r.refreshPolicies ?? []) if (p.table === table) { if (p.column === from) p.column = to; if (p.detectChanges === from) p.detectChanges = to; }
+  for (const a of r.aggregations ?? []) {
+    if (a.detail === table) for (const m of Object.values(a.columns)) if (m.column === from) m.column = to;
+    if (a.table === table && a.columns[from]) { a.columns[to] = a.columns[from]; delete a.columns[from]; }
+  }
 }
 
 /** Formula bar edit of a measure, calculated column or calculated table. */
@@ -225,6 +243,8 @@ interface State {
   multiSel: string[];
   vizTab: 'build' | 'format' | 'analytics';
   dataVersion: number;
+  /** Last automatic page refresh of DirectQuery tables (status bar). */
+  dqTick: number | null;
   filePath: string | null;
   dirty: boolean;
   past: Report[];
@@ -338,6 +358,16 @@ interface State {
   updateError: string | null;
   /** Modellazione › Traduzioni. */
   translationsDialog: boolean;
+  /** Gestisci aggregazioni (true or the aggregation table to show). */
+  aggDialog: string | true | null;
+  setAggregation: (table: string, a: AggTable | null) => void;
+  /** Aggiornamento incrementale (table menu / Modellazione): policy dialog. */
+  incrementalDialog: string | null;
+  setRefreshPolicy: (table: string, p: RefreshPolicy | null) => void;
+  /** Creates RangeStart/RangeEnd (Data/ora) and the filter on `column` in the table query. */
+  addRangeFilter: (table: string, column: string) => Promise<string | null>;
+  /** Service refresh simulated at `now`: archived periods kept, incremental periods read again. */
+  simulateIncremental: (table: string, now: Date) => Promise<{ parts: (PartitionInfo & { rows: number; state: string })[]; dropped: number } | { error: string }>;
   /** Language previewed in the report (model translations), null = the model's own names. Not saved. */
   previewCulture: string | null;
   /** Slicer change: deferred when the slicer's page has an "Applica tutti i filtri dei dati" button. */
@@ -345,7 +375,7 @@ interface State {
   /** Page buttons Applica / Cancella tutti i filtri dei dati. */
   applyAllSlicers: (pageId: string) => void;
   clearAllSlicers: (pageId: string) => void;
-  loadDbTables: (c: DbConnection, picks: { schema: string; table: string }[], transform: boolean) => Promise<void>;
+  loadDbTables: (c: DbConnection, picks: { schema: string; table: string }[], transform: boolean, mode?: StorageMode) => Promise<void>;
   pqSet: (fn: (st: PQState) => void) => void;
   pqAddStep: (step: NewStep) => void;
   pqNewSource: (kind: string) => Promise<void>;
@@ -423,6 +453,10 @@ interface State {
   loadSample: () => Promise<void>;
   removeTable: (name: string) => Promise<void>;
   refresh: () => Promise<void>;
+  /** Modalità di archiviazione of a table (reloads it as a view or as imported data). */
+  setStorageMode: (table: string, mode: StorageMode) => Promise<void>;
+  /** Automatic page refresh: driver DirectQuery sources fetched again, visuals re-queried. */
+  dqRefresh: () => Promise<void>;
 
   newReport: () => Promise<void>;
   save: (as?: boolean) => Promise<void>;
@@ -442,6 +476,8 @@ const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 let calcSync: Promise<void> = Promise.resolve();
 /** Tables materialized for calculation groups (dropped when their group goes away, e.g. undo). */
 const calcTables = new Set<string>();
+/** Aggiornamento incrementale simulated: the policy column and, with Rileva modifiche, the maximum per period. */
+const incState = new Map<string, { column: string; maxBy: Record<string, string | null> }>();
 
 function tableNameFor(path: string, existing: TableMeta[]): string {
   const base = path.split('/').pop()!.replace(/\.[^.]+$/, '').replace(/[^\p{L}\p{N} _-]/gu, '_') || 'Tabella';
@@ -530,12 +566,18 @@ export const useStore = create<State>((set, get) => {
 
   /** Runs a query (source + applied steps) and stores the result as model table `def.name`.
    *  `context` resolves references to other queries (defaults to the loaded tables). */
-  const loadTable = async (def: QueryDef & { sortBy?: Record<string, string>; dataCategory?: Record<string, string>; calcColumns?: TableMeta['calcColumns'] }, context?: QueryDef[], extraM?: { name: string; code: string }[]) => {
+  const loadTable = async (def: QueryDef & { sortBy?: Record<string, string>; dataCategory?: Record<string, string>; calcColumns?: TableMeta['calcColumns']; storageMode?: TableMeta['storageMode'] }, context?: QueryDef[], extraM?: { name: string; code: string }[]) => {
     const all = context ?? get().tables;
     const extra = extraM ?? get().report.pqQueries ?? [];
     const params = get().report.pqParams ?? [];
     const opts = compileOpts(all, extra, params);
     let meta: Awaited<ReturnType<typeof api.materialize>>;
+    const prevMode = get().tables.find((x) => x.name === def.name)?.storageMode;
+    let storageMode = 'storageMode' in def ? def.storageMode : prevMode;
+    if (storageMode === 'directQuery' && !dqCapable(def)) {
+      get().notify(`${def.name}: DirectQuery non disponibile per questa origine (query M, dati immessi, file o tabella calcolata): caricata in modalità Importazione.`, 9000);
+      storageMode = undefined;
+    }
     if (def.source.mcode !== undefined) {
       // M query: evaluated by the interpreter, loaded as typed rows.
       const r = await evaluateM(def.source.mcode, mSourceOf(all, extra, params));
@@ -543,7 +585,7 @@ export const useStore = create<State>((set, get) => {
       meta = await api.m.load(def.name, r.columns, r.rows);
       const errs = r.errors.reduce((a, b) => a + b, 0);
       if (errs) get().notify(`${def.name}: ${errs} ${errs === 1 ? 'valore con errore caricato' : 'valori con errore caricati'} come vuoti (${r.errorText.find((x) => x) ?? ''}).`, 9000);
-    } else meta = await api.materialize(def.name, await compileQuery(def, all, opts));
+    } else meta = await api.materialize(def.name, await compileQuery(def, all, opts), storageMode === 'directQuery' ? 'directQuery' : undefined);
     const steps = def.steps?.length ? def.steps : undefined;
     let sourceColumns: TableMeta['sourceColumns'];
     if (steps) {
@@ -554,7 +596,7 @@ export const useStore = create<State>((set, get) => {
     const sortBy = def.sortBy ?? prev?.sortBy;
     const dataCategory = def.dataCategory ?? prev?.dataCategory;
     const calcColumns = def.calcColumns ?? prev?.calcColumns;
-    const t: TableMeta = { ...meta, source: def.source, ...(steps ? { steps, sourceColumns } : {}), ...(sortBy ? { sortBy } : {}), ...(dataCategory && Object.keys(dataCategory).length ? { dataCategory } : {}), ...(calcColumns?.length ? { calcColumns } : {}) };
+    const t: TableMeta = { ...meta, source: def.source, ...(steps ? { steps, sourceColumns } : {}), ...(sortBy ? { sortBy } : {}), ...(dataCategory && Object.keys(dataCategory).length ? { dataCategory } : {}), ...(calcColumns?.length ? { calcColumns } : {}), ...(storageMode && storageMode !== 'import' ? { storageMode } : {}) };
     set((s) => ({
       tables: prev ? s.tables.map((x) => (x.name === def.name ? t : x)) : [...s.tables, t],
       dataVersion: s.dataVersion + 1,
@@ -577,6 +619,7 @@ export const useStore = create<State>((set, get) => {
     multiSel: [],
     vizTab: 'build',
     dataVersion: 0,
+    dqTick: null,
     filePath: null,
     dirty: false,
     past: [],
@@ -790,10 +833,17 @@ export const useStore = create<State>((set, get) => {
         if (cultures.length) extrasReport.cultures = cultures;
         if (mx?.queries?.length) extrasReport.pqQueries = mx.queries.map((q) => ({ name: q.name, code: q.code }));
         if (mx?.groups && Object.keys(mx.groups).length) extrasReport.pqGroups = mx.groups;
+        const aggs = (mx?.aggregations ?? []).filter((a) => known(a.table) && known(a.detail));
+        if (aggs.length) extrasReport.aggregations = aggs;
+        const pols = (mx?.refreshPolicies ?? []).filter((p) => known(p.table));
+        if (pols.length) extrasReport.refreshPolicies = pols;
         if (extrasReport.calcGroups) {
           set({ report: { ...get().report, calcGroups: extrasReport.calcGroups } });
           await get().syncCalcTables();
         }
+        // DirectQuery/Dual tables of the file: data are loaded like imported tables, the mode is kept (and exported).
+        const storage = mx?.storage ?? {};
+        if (Object.keys(storage).length) set((st) => ({ tables: st.tables.map((t) => (storage[t.name] ? { ...t, storageMode: storage[t.name] } : t)) }));
         setHierarchyLevels(mx?.hierarchies ?? []);
         const tables = get().tables;
         const layoutJson = model.layout ?? (model.pbir ? pbirToLayout(model.pbir) : null);
@@ -1320,7 +1370,7 @@ export const useStore = create<State>((set, get) => {
     },
 
     openPowerQuery: (focus, extra) => {
-      const queries: PQQuery[] = get().tables.filter((t) => !t.source.dax).map((t) => ({ name: t.name, orig: t.name, source: clone(t.source), steps: clone(t.steps ?? []) }));
+      const queries: PQQuery[] = get().tables.filter((t) => !t.source.dax).map((t) => ({ name: t.name, orig: t.name, source: clone(t.source), steps: clone(t.steps ?? []), ...(t.storageMode ? { storageMode: t.storageMode } : {}) }));
       // Connection-only queries (functions, helpers) are edited like the others.
       for (const q of get().report.pqQueries ?? []) queries.push({ name: q.name, orig: q.name, source: { path: '', mcode: q.code }, steps: [], load: false });
       const extras = extra ? (Array.isArray(extra) ? extra : [extra]) : [];
@@ -1364,6 +1414,113 @@ export const useStore = create<State>((set, get) => {
     updateDialog: false,
     updateError: null,
     translationsDialog: false,
+    aggDialog: null,
+    incrementalDialog: null,
+    setRefreshPolicy: (table, p) => get().mut((r) => {
+      const list = (r.refreshPolicies ?? []).filter((x) => x.table !== table);
+      if (p) list.push(p);
+      if (list.length) r.refreshPolicies = list; else delete r.refreshPolicies;
+    }),
+    addRangeFilter: async (table, column) => {
+      const t = get().tables.find((x) => x.name === table);
+      if (!t) return 'Tabella non trovata.';
+      const now = new Date();
+      const params = [...(get().report.pqParams ?? [])];
+      for (const [name, value] of [['RangeStart', ts(new Date(now.getFullYear() - 1, 0, 1))], ['RangeEnd', ts(new Date(now.getFullYear() + 1, 0, 1))]] as const) {
+        const i = params.findIndex((p) => p.name === name);
+        if (i < 0) params.push({ name, type: 'datetime', value });
+        else if (params[i].type !== 'datetime') params[i] = { ...params[i], type: 'datetime', value };
+      }
+      get().mut((r) => { r.pqParams = params; });
+      setParams(params);
+      try {
+        if (t.source.mcode !== undefined) {
+          const c = column.replace(/]/g, ']]');
+          const code = appendStep(t.source.mcode, 'Righe filtrate per intervallo', (prev) => `Table.SelectRows(${prev}, each [${c}] >= RangeStart and [${c}] < RangeEnd)`);
+          await loadTable({ ...t, source: { ...t.source, mcode: code } });
+        } else {
+          const steps: Step[] = [...(t.steps ?? []),
+            { id: uid(), kind: 'filterRows', column, op: 'ge', value: '#[RangeStart]', vtype: 'datetime' },
+            { id: uid(), kind: 'filterRows', column, op: 'lt', value: '#[RangeEnd]', vtype: 'datetime' }];
+          await loadTable({ ...t, steps });
+        }
+        await get().finalizeModel();
+        set({ dirty: true });
+        return null;
+      } catch (e: any) {
+        return e.message.split('\n')[0];
+      }
+    },
+    simulateIncremental: async (table, now) => {
+      const t = get().tables.find((x) => x.name === table);
+      const p = get().report.refreshPolicies?.find((x) => x.table === table);
+      if (!t || !p) return { error: 'Nessun criterio di aggiornamento incrementale per la tabella.' };
+      if (t.storageMode === 'directQuery') return { error: "Le tabelle DirectQuery non usano l'aggiornamento incrementale." };
+      const w = policyWindow(p, now);
+      const parts = partitions(p, now);
+      const all = get().tables;
+      const opts = compileOpts(all, get().report.pqQueries ?? [], get().report.pqParams ?? []);
+      const def = { name: t.name, source: t.source, steps: t.steps };
+      const col = qi(p.column);
+      const lit = (d: Date) => `TIMESTAMP ${ql(ts(d))}`;
+      const between = (a: Date, b: Date) => `(${col} >= ${lit(a)} AND ${col} < ${lit(b)})`;
+      // Each partition query runs with RangeStart/RangeEnd set to the partition bounds, like the service.
+      const srcSql = (a: Date, b: Date) => withParams({ RangeStart: ts(a), RangeEnd: ts(b) }, async () => {
+        if (t.source.mcode !== undefined) {
+          const r = await evaluateM(t.source.mcode, mSourceOf(all, get().report.pqQueries ?? [], (get().report.pqParams ?? []).map((x) => (x.name === 'RangeStart' ? { ...x, value: ts(a) } : x.name === 'RangeEnd' ? { ...x, value: ts(b) } : x))));
+          const tmp = '__mibbi_inc_m';
+          await api.m.load(tmp, r.columns, r.rows);
+          return `SELECT * FROM ${qi(tmp)}`;
+        }
+        return compileQuery(def, all, opts);
+      });
+      set({ busy: 'Simulazione dell\'aggiornamento incrementale…' });
+      try {
+        const state = incState.get(table);
+        const fresh = !state || state.column !== p.column;
+        const incSql = await srcSql(fresh ? w.archiveStart : w.incStart, w.end);
+        const cols = (await api.query(`DESCRIBE SELECT * FROM (${incSql})`)).rows.map((r) => qi(r.column_name)).join(', ');
+        const maxBy: Record<string, string | null> = {};
+        let keep = fresh ? 'FALSE' : between(w.archiveStart, w.incStart);
+        let load = between(fresh ? w.archiveStart : w.incStart, w.end);
+        const unchanged = new Set<string>();
+        if (p.detectChanges && !fresh) {
+          const dc = qi(p.detectChanges);
+          const loads: string[] = [];
+          for (const x of parts.filter((y) => y.kind === 'incremental')) {
+            const m = (await api.query(`SELECT CAST(max(${dc}) AS VARCHAR) AS m FROM (${incSql}) WHERE ${between(x.start, x.end)}`)).rows[0]?.m ?? null;
+            maxBy[x.name] = m;
+            if (x.name in state.maxBy && state.maxBy[x.name] === m) { unchanged.add(x.name); keep += ` OR ${between(x.start, x.end)}`; } else loads.push(between(x.start, x.end));
+          }
+          load = loads.length ? loads.join(' OR ') : 'FALSE';
+        }
+        const dropped = fresh ? 0 : Number((await api.query(`SELECT count(*) AS n FROM ${qi(table)} WHERE ${col} < ${lit(w.archiveStart)} OR ${col} >= ${lit(w.end)} OR ${col} IS NULL`)).rows[0].n);
+        const sql = `SELECT ${cols} FROM ${qi(table)} WHERE ${keep} UNION ALL SELECT ${cols} FROM (${incSql}) WHERE ${load}`;
+        await api.materialize('__mibbi_inc', fresh ? `SELECT * FROM (${incSql}) WHERE ${load}` : sql);
+        const meta = await api.materialize(table, 'SELECT * FROM "__mibbi_inc"');
+        await api.dropTable('__mibbi_inc');
+        await api.dropTable('__mibbi_inc_m');
+        set((s) => ({ tables: s.tables.map((x) => (x.name === table ? { ...x, columns: meta.columns, rowCount: meta.rowCount } : x)), dataVersion: s.dataVersion + 1 }));
+        await get().finalizeModel();
+        if (p.detectChanges) for (const x of parts.filter((y) => y.kind === 'incremental')) if (!(x.name in maxBy)) maxBy[x.name] = (await api.query(`SELECT CAST(max(${qi(p.detectChanges)}) AS VARCHAR) AS m FROM ${qi(table)} WHERE ${between(x.start, x.end)}`)).rows[0]?.m ?? null;
+        incState.set(table, { column: p.column, maxBy });
+        const counts = (await api.query(`SELECT ${parts.map((x, i) => `count(*) FILTER (WHERE ${between(x.start, x.end)}) AS p${i}`).join(', ') || '0 AS p0'} FROM ${qi(table)}`)).rows[0];
+        return {
+          dropped,
+          parts: parts.map((x, i) => ({ ...x, rows: Number(counts[`p${i}`] ?? 0),
+            state: x.kind === 'realtime' ? 'DirectQuery (letta al momento della query)' : fresh ? 'Caricata' : x.kind === 'archive' ? 'Mantenuta' : unchanged.has(x.name) ? 'Invariata (nessuna modifica rilevata)' : 'Aggiornata' })),
+        };
+      } catch (e: any) {
+        return { error: e.message.split('\n')[0] };
+      } finally {
+        set({ busy: null });
+      }
+    },
+    setAggregation: (table, a) => get().mut((r) => {
+      const list = (r.aggregations ?? []).filter((x) => x.table !== table);
+      if (a) list.push(a);
+      if (list.length) r.aggregations = list; else delete r.aggregations;
+    }),
     previewCulture: null,
     setSlicer: (id, values) => {
       const page = get().report.pages.find((p) => p.visuals.some((v) => v.id === id));
@@ -1381,14 +1538,14 @@ export const useStore = create<State>((set, get) => {
         if (v.jsonFilters) delete v.jsonFilters;
       }
     }),
-    loadDbTables: async (c, picks, transform) => {
+    loadDbTables: async (c, picks, transform, mode) => {
       const taken = new Set(get().tables.map((t) => t.name));
       const defs = picks.map((p) => {
         let name = p.table, i = 2;
         while (taken.has(name)) name = `${p.table} (${i++})`;
         taken.add(name);
         // a native SQL statement is one query (the navigator shows it as Query1); otherwise schema/table
-        return { name, source: { path: '', db: c.query ? { ...c, schema: '', table: p.table } : { ...c, query: undefined, schema: p.schema, table: p.table } } };
+        return { name, source: { path: '', db: c.query ? { ...c, schema: '', table: p.table } : { ...c, query: undefined, schema: p.schema, table: p.table } }, ...(mode === 'directQuery' ? { storageMode: mode } : {}) };
       });
       set({ dbDialog: false });
       if (transform) { get().openPowerQuery(undefined, defs.map((d) => ({ ...d, orig: null, steps: [] }))); return; }
@@ -1452,7 +1609,7 @@ export const useStore = create<State>((set, get) => {
         for (const q of loadable) if (q.source.mcode !== undefined && dependencies(q).some((d) => connOnly.some((c) => c.name === d))) changed.add(q.name);
         for (const q of loadable) {
           if (!changed.has(q.name)) continue;
-          try { await loadTable({ name: q.name, source: q.source, steps: q.steps }, loadable, connM); } catch (e: any) { failed.push(`${q.name}: ${e.message}`); }
+          try { await loadTable({ name: q.name, source: q.source, steps: q.steps, ...(q.storageMode ? { storageMode: q.storageMode } : {}) }, loadable, connM); } catch (e: any) { failed.push(`${q.name}: ${e.message}`); }
         }
         const order = loadable.map((q) => q.name);
         const pos = (n: string) => (order.includes(n) ? order.indexOf(n) : order.length);
@@ -1958,6 +2115,8 @@ export const useStore = create<State>((set, get) => {
         if (r.calcGroups) r.calcGroups = r.calcGroups.filter((g) => g.table !== name);
         if (r.dateTables) delete r.dateTables[name];
         if (r.calendars) r.calendars = r.calendars.filter((c) => c.table !== name);
+        if (r.refreshPolicies) { r.refreshPolicies = r.refreshPolicies.filter((p) => p.table !== name); if (!r.refreshPolicies.length) delete r.refreshPolicies; }
+        if (r.aggregations) { r.aggregations = r.aggregations.filter((a) => a.table !== name && a.detail !== name); if (!r.aggregations.length) delete r.aggregations; }
         for (const k of Object.keys(r.displayFolders ?? {})) if (k.startsWith(name + '\u0001')) delete r.displayFolders![k];
         for (const role of r.roles ?? []) role.filters = role.filters.filter((f) => f.table !== name);
       });
@@ -1976,6 +2135,33 @@ export const useStore = create<State>((set, get) => {
       }
     },
 
+    setStorageMode: async (table, mode) => {
+      const t = get().tables.find((x) => x.name === table);
+      if (!t || (t.storageMode ?? 'import') === mode) return;
+      if (mode === 'directQuery' && !dqCapable(t)) { get().notify('DirectQuery è disponibile per le origini database (e le query che vi fanno riferimento).'); return; }
+      set({ busy: 'Modifica della modalità di archiviazione…' });
+      try {
+        await loadTable({ ...t, storageMode: mode });
+        await get().finalizeModel();
+        set({ dirty: true });
+      } catch (e: any) {
+        get().notify(`${table}: ${e.message}`);
+      } finally {
+        set({ busy: null });
+      }
+    },
+    dqRefresh: async () => {
+      const all = get().tables;
+      const root = (t: QueryDef | undefined, seen = new Set<string>()): QueryDef | undefined => {
+        while (t?.source.ref && !seen.has(t.source.ref)) { seen.add(t.source.ref); t = all.find((x) => x.name === t!.source.ref); }
+        return t;
+      };
+      const sources = all.filter((t) => t.storageMode === 'directQuery').map((t) => root(t)?.source).filter((x): x is TableMeta['source'] => !!x?.db).map(resolveSource);
+      if (!sources.length) return;
+      try { await api.dbRefetch(sources); } catch (e: any) { get().notify('Aggiornamento pagina: ' + e.message); }
+      set((s) => ({ dataVersion: s.dataVersion + 1, dqTick: Date.now() }));
+    },
+
     newReport: async () => {
       if (get().viewAs) { await api.setRole(null); set({ viewAs: null }); }
       for (const t of get().tables) await api.dropTable(t.name);
@@ -1991,7 +2177,7 @@ export const useStore = create<State>((set, get) => {
       // Version 2: data embedded as Parquet (like a .pbix), sources and steps kept for refresh.
       const content = JSON.stringify({
         format: 'mibx', version: 2,
-        tables: tables.map((t, i) => ({ name: t.name, source: t.source, steps: t.steps, sourceColumns: t.sourceColumns, sortBy: t.sortBy, ...(t.dataCategory ? { dataCategory: t.dataCategory } : {}), calcColumns: t.calcColumns, ...(t.fieldParam ? { fieldParam: t.fieldParam } : {}), data: `data/${i}.parquet` })),
+        tables: tables.map((t, i) => ({ name: t.name, source: t.source, steps: t.steps, sourceColumns: t.sourceColumns, sortBy: t.sortBy, ...(t.dataCategory ? { dataCategory: t.dataCategory } : {}), calcColumns: t.calcColumns, ...(t.fieldParam ? { fieldParam: t.fieldParam } : {}), ...(t.storageMode ? { storageMode: t.storageMode } : {}), data: `data/${i}.parquet` })),
         report,
       }, (k, v) => (k === 'pendingSlicer' ? undefined : v), 2); // unapplied slicer selections are not saved
       set({ busy: 'Salvataggio…' });
@@ -2014,8 +2200,10 @@ export const useStore = create<State>((set, get) => {
         await get().newReport();
         set({ busy: 'Apertura del report…' });
         const failed: string[] = [];
-        const defs = doc.tables as (QueryDef & { sortBy?: Record<string, string>; dataCategory?: Record<string, string>; calcColumns?: TableMeta['calcColumns']; sourceColumns?: TableMeta['sourceColumns']; fieldParam?: TableMeta['fieldParam']; data?: string })[];
+        const defs = doc.tables as (QueryDef & { sortBy?: Record<string, string>; dataCategory?: Record<string, string>; calcColumns?: TableMeta['calcColumns']; sourceColumns?: TableMeta['sourceColumns']; fieldParam?: TableMeta['fieldParam']; storageMode?: TableMeta['storageMode']; data?: string })[];
         for (const t of defs) {
+          // DirectQuery: read from the source again; the saved copy is only a fallback.
+          if (t.storageMode === 'directQuery') { try { await loadTable(t, defs); continue; } catch { if (!f.dataDir || !t.data) { failed.push(t.name); continue; } failed.push(`${t.name} (DirectQuery: mostrati i dati salvati)`); } }
           if (f.dataDir && t.data) {
             // Embedded data: no access to the original sources needed (Aggiorna reloads from them).
             try {

@@ -1,4 +1,4 @@
-import type { QueryResult, ColumnMeta, TableMeta, DbConnection, CustomVisualPkg } from './types';
+import type { QueryResult, ColumnMeta, TableMeta, DbConnection, CustomVisualPkg, StorageMode } from './types';
 import type { PbitPart } from './pbix/pbit';
 
 /** Output of electron/pbix/read_pbix.py */
@@ -28,6 +28,10 @@ export interface PowerBIModel {
     /** Connection-only queries and query groups (Power Query). */
     queries?: { name: string; code: string }[];
     groups?: Record<string, string>;
+    /** Partition mode of DirectQuery / Dual tables. */
+    storage?: Record<string, "directQuery" | "dual">;
+    aggregations?: import('./types').AggTable[];
+    refreshPolicies?: import('./types').RefreshPolicy[];
     roles: { name: string; filters: { table: string; expression: string }[] }[];
   };
   warnings: string[];
@@ -61,7 +65,9 @@ interface Api {
   preview(file: string, sheet?: string): Promise<QueryResult>;
   importFile(file: string, table: string, sheet?: string): Promise<TableInfo>;
   dropTable(table: string): Promise<void>;
-  materialize(table: string, sql: string): Promise<TableInfo>;
+  materialize(table: string, sql: string, mode?: StorageMode): Promise<TableInfo>;
+  /** DirectQuery over driver sources: fetch the source queries again (ATTACHed databases are read live). */
+  dbRefetch(sources: TableMeta['source'][]): Promise<boolean[]>;
   sourceExpr(source: TableMeta['source']): Promise<string>;
   clearRemoteCache(): Promise<void>;
   openDir(): Promise<string | null>;

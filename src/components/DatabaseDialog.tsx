@@ -47,7 +47,7 @@ export function DatabaseDialog() {
   const conn0 = CONNECTORS.find((c) => c.id === cid)!;
   const kind = conn0.kind;
   const [form, setForm] = useState({ host: 'localhost', port: '', database: '', user: '', password: '', file: '', remember: true, auth: 'sql', domain: '',
-    encrypt: true, trustCert: false, warehouse: '', role: '', httpPath: '', authDb: '', query: '', advanced: false });
+    encrypt: true, trustCert: false, warehouse: '', role: '', httpPath: '', authDb: '', query: '', advanced: false, mode: 'import' as 'import' | 'directQuery' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [conn, setConn] = useState<{ c: DbConnection; alias: string | null; tables: { schema: string; table: string; rows: number | null; view?: boolean }[]; stored: boolean } | null>(null);
@@ -120,7 +120,7 @@ export function DatabaseDialog() {
   const key = (t: { schema: string; table: string }) => `${t.schema}\u0001${t.table}`;
   const load = (transform: boolean) => {
     const picks = conn!.tables.filter((t) => picked.has(key(t)));
-    s.loadDbTables(conn!.c, picks, transform);
+    s.loadDbTables(conn!.c, picks, transform, form.mode);
   };
   const where = (c: DbConnection) => (fileKind ? c.file?.split('/').pop() : `${c.host}${c.database ? ' / ' + c.database : ''}`);
   const browse = async (k: string, field: 'file') => { const p = await api.openDataDialog(k); if (p) set({ [field]: p }); };
@@ -197,7 +197,16 @@ export function DatabaseDialog() {
                 </details>
               )}
             </>}
-            <div className="pq-note">Modalità di connettività dati: <b>Importa</b> (i dati vengono copiati nel modello e aggiornati con <i>Aggiorna</i>).{['mysql', 'postgres', 'sqlite'].includes(kind) ? ' Al primo uso DuckDB scarica l\'estensione del connettore.' : ''}</div>
+            <div className="pq-field">Modalità Connettività dati
+              <div className="pq-row" style={{ gap: 16 }}>
+                <label className="pq-check"><input type="radio" name="dq-mode" checked={form.mode === 'import'} onChange={() => set({ mode: 'import' })} />Importa</label>
+                <label className="pq-check"><input type="radio" name="dq-mode" checked={form.mode === 'directQuery'} onChange={() => set({ mode: 'directQuery' })} />DirectQuery</label>
+              </div>
+              <span className="hint">{form.mode === 'import' ? 'I dati vengono copiati nel modello e aggiornati con Aggiorna.'
+                : ['mysql', 'postgres', 'sqlite'].includes(kind) ? 'I dati restano nel database: ogni oggetto visivo lo interroga al momento (vista DuckDB sul database collegato).'
+                : 'Ogni oggetto visivo legge i dati dal risultato della query; l\'aggiornamento automatico della pagina e Aggiorna rieseguono la query sul database.'}
+                {['mysql', 'postgres', 'sqlite'].includes(kind) ? ' Al primo uso DuckDB scarica l\'estensione del connettore.' : ''}</span>
+            </div>
             {error && <div className="pq-err" style={{ userSelect: 'text' }}>{error}</div>}
           </div>
         ) : (

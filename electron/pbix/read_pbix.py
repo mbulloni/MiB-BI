@@ -169,6 +169,32 @@ def text_of(v):
     return "\n".join(v) if isinstance(v, list) else (v or "")
 
 
+def put_agg(aggs, table, column, summarization, detail, base_column):
+    """One aggregation table entry (same shape as Report.aggregations); Count of a table rows = countRows."""
+    if not detail or not table or not column:
+        return
+    a = aggs.setdefault(table, {"table": table, "detail": detail, "columns": {}})
+    if summarization == "count" and not base_column:
+        a["columns"][column] = {"summarization": "countRows"}
+    else:
+        a["columns"][column] = {"summarization": summarization, "column": base_column}
+
+
+def put_policy(mx, table, rolling_g, rolling_n, inc_g, inc_n, offset, mode, polling, source):
+    """TMSL/metadata refresh policy → Report.refreshPolicies entry (date column read from the RangeStart filter)."""
+    m = re.search(r"\[([^\]]+)\]\s*>=?\s*RangeStart", source or "") or re.search(r"\[([^\]]+)\]\s*<\s*RangeEnd", source or "")
+    p = {"table": table, "column": m.group(1) if m else "", "archive": {"n": int(rolling_n or 1), "unit": rolling_g or "year"},
+         "incremental": {"n": int(inc_n or 1), "unit": inc_g or "day"}}
+    if offset and int(offset) < 0 and mode != "hybrid":
+        p["completeOnly"] = True
+    if mode == "hybrid":
+        p["realTime"] = True
+    dc = re.findall(r"\[([^\]]+)\]", polling or "")
+    if dc:
+        p["detectChanges"] = dc[-1]
+    mx["refreshPolicies"].append(p)
+
+
 def model_extras_sqlite(db, out):
     """User hierarchies, display folders, date tables, calculation groups and roles from metadata.sqlitedb."""
     mx = out["model"]
@@ -263,9 +289,28 @@ def model_extras_sqlite(db, out):
             mx["queries"].append({"name": r["N"], "code": r["E"]})
         if folders.get(r["G"]):
             mx["groups"][r["N"]] = folders[r["G"]]
-    for _, r in q("SELECT t.Name AS T, p.QueryGroupID AS G FROM [Partition] p JOIN [Table] t ON p.TableID = t.ID"):
+    for _, r in q("SELECT t.Name AS T, p.QueryGroupID AS G, p.Mode AS M FROM [Partition] p JOIN [Table] t ON p.TableID = t.ID"):
         if folders.get(r["G"]):
             mx["groups"][r["T"]] = folders[r["G"]]
+        # TOM ModeType: 0 Import, 1 DirectQuery, 2 Default, 3 Push, 4 Dual
+        mode = {1: "directQuery", 4: "dual"}.get(int(r["M"] or 0))
+        if mode:
+            mx["storage"][r["T"]] = mode
+    # Aggregations (AlternateOf): SummarizationType 0 GroupBy, 1 Sum, 2 Count, 3 Min, 4 Max; Count of a table = BaseTableID.
+    summ = {0: "groupBy", 1: "sum", 2: "count", 3: "min", 4: "max"}
+    aggs = {}
+    for _, r in q("SELECT t.Name AS T, COALESCE(c.ExplicitName, c.InferredName) AS C, a.Summarization AS S, bt.Name AS BT, COALESCE(bc.ExplicitName, bc.InferredName) AS BC, bct.Name AS BCT "
+                  "FROM [AlternateOf] a JOIN [Column] c ON a.ColumnID = c.ID JOIN [Table] t ON c.TableID = t.ID "
+                  "LEFT JOIN [Table] bt ON a.BaseTableID = bt.ID LEFT JOIN [Column] bc ON a.BaseColumnID = bc.ID LEFT JOIN [Table] bct ON bc.TableID = bct.ID"):
+        put_agg(aggs, r["T"], r["C"], summ.get(int(r["S"] or 0), "sum"), r["BCT"] or r["BT"], r["BC"])
+    mx["aggregations"].extend(aggs.values())
+    # Incremental refresh: RefreshGranularityType 0 Day, 1 Month, 2 Quarter, 3 Year; RefreshPolicyMode 0 Import, 1 Hybrid.
+    gran = {0: "day", 1: "month", 2: "quarter", 3: "year"}
+    for _, r in q("SELECT t.Name AS T, p.RollingWindowGranularity AS RG, p.RollingWindowPeriods AS RN, p.IncrementalGranularity AS IG, "
+                  "p.IncrementalPeriods AS IN_, p.IncrementalPeriodsOffset AS OFF, p.Mode AS MO, p.PollingExpression AS PE, p.SourceExpression AS SE "
+                  "FROM [RefreshPolicy] p JOIN [Table] t ON p.TableID = t.ID"):
+        put_policy(mx, r["T"], gran.get(int(r["RG"] or 3)), r["RN"], gran.get(int(r["IG"] or 0)), r["IN_"], r["OFF"],
+                   "hybrid" if int(r["MO"] or 0) == 1 else "import", r["PE"], r["SE"])
 
 
 # TOM TimeUnit (Calendar column groups); 0 = time-related columns.
@@ -321,10 +366,24 @@ def model_extras_tmsl(model, out):
             mx["queries"].append({"name": e["name"], "code": code})
         if e.get("queryGroup"):
             mx["groups"][e["name"]] = e["queryGroup"]
+    tmsl_aggs = {}
     for t in model.get("tables", []):
+        for c in t.get("columns", []):
+            a = c.get("alternateOf")
+            if isinstance(a, dict) and a.get("summarization"):
+                bc = a.get("baseColumn") or {}
+                put_agg(tmsl_aggs, t["name"], c["name"], a["summarization"], bc.get("table") or a.get("baseTable"), bc.get("column"))
         for p in t.get("partitions", []):
             if p.get("queryGroup"):
                 mx["groups"][t["name"]] = p["queryGroup"]
+            if p.get("mode") in ("directQuery", "dual"):
+                mx["storage"][t["name"]] = p["mode"]
+    mx["aggregations"].extend(tmsl_aggs.values())
+    for t in model.get("tables", []):
+        rp = t.get("refreshPolicy")
+        if isinstance(rp, dict):
+            put_policy(mx, t["name"], rp.get("rollingWindowGranularity"), rp.get("rollingWindowPeriods"), rp.get("incrementalGranularity"),
+                       rp.get("incrementalPeriods"), rp.get("incrementalPeriodsOffset"), rp.get("mode"), text_of(rp.get("pollingExpression")), text_of(rp.get("sourceExpression")))
     for c in model.get("cultures", []):
         cu = {"name": c["name"], "captions": {}, "descriptions": {}, "folders": {}}
 
@@ -425,7 +484,7 @@ def main():
     os.makedirs(outdir, exist_ok=True)
     out = {"file": path, "kind": None, "tables": [], "relationships": [], "measures": [],
            "layout": None, "resources": {}, "customVisuals": [], "parameters": [], "warnings": [],
-           "model": {"hierarchies": [], "folders": [], "dateTables": {}, "calcGroups": [], "roles": [], "functions": [], "calendars": [], "cultures": [], "queries": [], "groups": {}}}
+           "model": {"hierarchies": [], "folders": [], "dateTables": {}, "calcGroups": [], "roles": [], "functions": [], "calendars": [], "cultures": [], "queries": [], "groups": {}, "storage": {}, "aggregations": [], "refreshPolicies": []}}
     with zipfile.ZipFile(path) as z:
         names = z.namelist()
         if "Report/Layout" in names:

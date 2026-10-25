@@ -17,6 +17,8 @@ import { OptionsDialog } from './components/OptionsDialog';
 import { ThemeDialog } from './components/ThemeDialog';
 import { checkUpdates, UpdateBanner, UpdateDialog } from './components/Updates';
 import { TranslationsDialog } from './components/TranslationsDialog';
+import { AggregationsDialog } from './components/AggregationsDialog';
+import { IncrementalDialog } from './components/IncrementalDialog';
 import { ModelProperties } from './components/ModelProperties';
 import { ServiceDialog } from './components/ServiceDialog';
 import { RolesDialog, ViewAsBar, ViewAsDialog } from './components/RolesDialog';
@@ -146,6 +148,8 @@ export function App() {
       <ThemeDialog />
       <UpdateDialog />
       <TranslationsDialog />
+      <AggregationsDialog />
+      <IncrementalDialog />
       <ModelProperties />
       <ServiceDialog />
       <RolesDialog />

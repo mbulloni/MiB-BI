@@ -242,6 +242,9 @@ input[type=checkbox] { accent-color: var(--text); margin: 0; width: 14px; height
 .statusbar .zoom input[type=range] { width: 120px; accent-color: var(--text2); }
 .statusbar .zoom button { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; }
 .statusbar .zoom button:hover { background: var(--press); }
+.statusbar .storage-status { margin-left: auto; cursor: pointer; }
+.statusbar .storage-status:hover { color: var(--text); }
+.statusbar .storage-status + .zoom { margin-left: 0; }
 
 /* ---------- visuals on canvas ---------- */
 .vc { position: absolute; }
@@ -426,6 +429,10 @@ input[type=checkbox] { accent-color: var(--text); margin: 0; width: 14px; height
 .modelview { flex: 1; position: relative; overflow: auto; background: var(--hover); background-image: radial-gradient(var(--line3) 1px, transparent 1px); background-size: 20px 20px; }
 .mtable { position: absolute; width: 200px; background: var(--bg); border-radius: 4px; box-shadow: 0 1.6px 3.6px rgba(0,0,0,.13), 0 0.3px 0.9px rgba(0,0,0,.11); }
 .mtable .mt-h { height: 31px; display: flex; align-items: center; padding: 0 10px; font-weight: 600; border-bottom: 1px solid var(--line); cursor: move; border-top: 4px solid #118DFF; border-radius: 4px 4px 0 0; }
+.mtable .mt-mode { font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px; margin-left: 4px; background: var(--sel-bg, #DEECF9); color: var(--link, #0F6CBD); }
+.mtable .mt-mode.dual { background: var(--bg2); color: var(--text2); border: 1px dashed var(--line2); }
+.mtable .mt-props { margin-left: 4px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; opacity: .55; border-radius: 3px; }
+.mtable .mt-props:hover { opacity: 1; background: var(--press); }
 .mtable .mt-b { max-height: 260px; overflow: auto; padding: 4px 0; }
 .mtable .mt-b div { height: 24px; display: flex; align-items: center; gap: 6px; padding: 0 10px; }
 .mtable .mt-b div:hover { background: var(--hover); }
@@ -911,6 +918,12 @@ thead .pq-rn { z-index: 2; }
 .dax-sig-d { font-family: 'Segoe UI', sans-serif; color: var(--text2); white-space: normal; max-width: 420px; margin-top: 2px; }
 .props-dlg { width: 480px; }
 .props-dlg .hint, .roles-dlg .hint, .viewas-dlg .hint { color: var(--text2); font-weight: 400; font-size: 11px; }
+.agg-dlg { width: min(900px, 94vw); max-height: 86vh; }
+.agg-dlg .hint { color: var(--text2); font-size: 11px; }
+.agg-grid { width: 100%; border-collapse: collapse; font-size: 12px; }
+.agg-grid th { text-align: left; font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line); background: var(--bg2); position: sticky; top: 0; }
+.agg-grid td { padding: 4px 8px; border-bottom: 1px solid var(--line); }
+.agg-grid select { width: 100%; }
 .hier-levels { display: flex; flex-direction: column; border: 1px solid var(--line); margin: 2px 0 4px; }
 .hier-level { display: flex; align-items: center; gap: 6px; padding: 3px 6px; font-weight: 400; }
 .hier-level span { flex: 1; }
@@ -1081,3 +1094,15 @@ thead .pq-rn { z-index: 2; }
 .pq-deps-body { flex: 1; overflow: auto; background: var(--bg2); margin: 0 24px; border: 1px solid var(--line); }
 
 .pq-quality b { display: inline-block; height: 100%; background: #D13438; vertical-align: top; }
+.inc-dlg { width: min(780px, 94vw); max-height: 90vh; }
+.inc-dlg .hint { color: var(--text2); font-size: 11px; }
+.inc-step { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 4px; }
+.inc-step.ok { border-left: 3px solid var(--ok-text); }
+.inc-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.inc-row input[type=number] { width: 60px; }
+.inc-timeline { display: flex; gap: 2px; font-size: 11px; }
+.inc-timeline span { padding: 6px 8px; border-radius: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.inc-timeline .arch { background: var(--bg2); border: 1px solid var(--line2); }
+.inc-timeline .inc { background: var(--sel-bg); color: var(--link); }
+.inc-timeline .rt { background: var(--warn-bg); }
+.agg-grid tr.inc-incremental td:first-child { color: var(--link); font-weight: 600; }

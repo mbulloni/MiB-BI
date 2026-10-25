@@ -61,6 +61,11 @@ function column(c: Obj, d: number): string {
     if (v.relationship) s += `${tabs(d + 2)}relationship: ${v.relationship}\n`;
     if (v.defaultHierarchy) s += `${tabs(d + 2)}defaultHierarchy: ${ref(v.defaultHierarchy.table, v.defaultHierarchy.hierarchy)}\n`;
   }
+  if (c.alternateOf) {
+    s += `\n${tabs(d + 1)}alternateOf\n${tabs(d + 2)}summarization: ${c.alternateOf.summarization}\n`;
+    if (c.alternateOf.baseColumn) s += `${tabs(d + 2)}baseColumn: ${ref(c.alternateOf.baseColumn.table, c.alternateOf.baseColumn.column)}\n`;
+    if (c.alternateOf.baseTable) s += `${tabs(d + 2)}baseTable: ${tmdlName(c.alternateOf.baseTable)}\n`;
+  }
   return s + annotations(c, d + 1);
 }
 
@@ -104,7 +109,7 @@ function calendar(c: Obj, d: number): string {
 
 function table(t: Obj): string {
   let s = description(t.description, 0) + `table ${tmdlName(t.name)}\n`;
-  s += props(t, 1, ['columns', 'measures', 'partitions', 'hierarchies', 'calendars', 'calculationGroup']);
+  s += props(t, 1, ['columns', 'measures', 'partitions', 'hierarchies', 'calendars', 'calculationGroup', 'refreshPolicy']);
   if (t.calculationGroup) {
     const g = t.calculationGroup;
     s += `\n\tcalculationGroup\n` + props(g, 2, ['calculationItems']);
@@ -118,6 +123,12 @@ function table(t: Obj): string {
   for (const h of t.hierarchies ?? []) s += '\n' + hierarchy(h, 1);
   for (const c of t.calendars ?? []) s += '\n' + calendar(c, 1);
   for (const p of t.partitions ?? []) s += '\n' + partition(p, 1);
+  if (t.refreshPolicy) {
+    const r = t.refreshPolicy;
+    s += '\n\trefreshPolicy\n' + props(r, 2, ['sourceExpression', 'pollingExpression']);
+    if (r.sourceExpression) s += `\t\tsourceExpression${expr(r.sourceExpression, 4)}\n`;
+    if (r.pollingExpression) s += `\n\t\tpollingExpression${expr(r.pollingExpression, 4)}\n`;
+  }
   return s + annotations(t, 1);
 }
 

@@ -21,7 +21,7 @@ export function PerformancePane() {
     return { name: '(oggetto visivo eliminato)', page: '' };
   };
   const copy = (text: string) => navigator.clipboard.writeText(text).then(() => s.notify('Copiato negli Appunti.')).catch(() => s.notify('Copia non riuscita.'));
-  const exportAll = () => copy(JSON.stringify(entries.map((e) => ({ visual: visualName(e.visualId).name, page: visualName(e.visualId).page, start: new Date(e.at).toISOString(), queryMs: Math.round(e.queryMs), renderMs: Math.round(e.renderMs), rows: e.rows, query: e.sql, ...(e.error ? { error: e.error } : {}) })), null, 2));
+  const exportAll = () => copy(JSON.stringify(entries.map((e) => ({ visual: visualName(e.visualId).name, page: visualName(e.visualId).page, start: new Date(e.at).toISOString(), queryMs: Math.round(e.queryMs), renderMs: Math.round(e.renderMs), rows: e.rows, ...(e.storage ? { storage: e.storage } : {}), query: e.sql, ...(e.error ? { error: e.error } : {}) })), null, 2));
   const sorted = [...entries].reverse();
   const max = Math.max(1, ...entries.map((e) => e.queryMs + e.renderMs));
   return (
@@ -48,6 +48,7 @@ export function PerformancePane() {
                   <div><span>Query</span><b>{ms(e.queryMs)}</b></div>
                   <div><span>Visualizzazione oggetto visivo</span><b>{ms(e.renderMs)}</b></div>
                   <div><span>Righe</span><b>{e.rows.toLocaleString(locale())}</b></div>
+                  {e.storage && <div><span>Origine dati</span><b>{e.storage}</b></div>}
                   {e.error && <div className="perf-error">{e.error}</div>}
                   <button className="link" onClick={() => copy(e.sql)}>Copia query</button>
                 </div>

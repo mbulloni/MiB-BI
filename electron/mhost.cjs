@@ -91,7 +91,8 @@ async function load(table, columns, rows) {
     const spec = columns.map((c, i) => `${ql('c' + i)}: ${ql(DUCK[c.kind] ?? 'VARCHAR')}`).join(', ');
     const select = columns.map((c, i) => `${qi('c' + i)} AS ${qi(c.name)}`).join(', ') || `NULL AS "_"`;
     const from = rows.length ? `read_json(${ql(tmp)}, format = 'newline_delimited', columns = {${spec || "'_': 'VARCHAR'"}})` : `(SELECT ${columns.map((c, i) => `NULL::${DUCK[c.kind] ?? 'VARCHAR'} AS ${qi('c' + i)}`).join(', ') || 'NULL AS "_"'} WHERE false)`;
-    await db.run(`CREATE OR REPLACE TABLE ${qi(table)} AS SELECT ${select} FROM ${from}`);
+    await db.dropTable(table);
+    await db.run(`CREATE TABLE ${qi(table)} AS SELECT ${select} FROM ${from}`);
     return db.describe(table);
   } finally {
     fs.rmSync(tmp, { force: true });

@@ -26,7 +26,7 @@ export { DaxError };
 /** `dateTables`: tables marked as date table (table → date column); `calcGroups`: calculation groups;
  *  `user`: USERPRINCIPALNAME() (Visualizza come › Altro utente). */
 export interface Model { tables: TableMeta[]; rels: Relationship[]; measures: Measure[]; dateTables?: Record<string, string>; calcGroups?: CalcGroup[]; user?: string;
-  functions?: DaxFunction[]; calendars?: CalendarDef[]; }
+  functions?: DaxFunction[]; calendars?: CalendarDef[]; aggregations?: import('../types').AggTable[]; }
 
 const qi = (s: string) => '"' + s.replace(/"/g, '""') + '"';
 const ql = (s: string) => "'" + s.replace(/'/g, "''") + "'";

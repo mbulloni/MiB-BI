@@ -6,6 +6,13 @@ let params: PQParam[] = [];
 export const setParams = (list: PQParam[] | undefined) => { params = list ?? []; };
 export const PARAM_RE = /#\[([^\]]+)\]/g;
 
+/** Runs `fn` with some parameters set to other values (incremental refresh partitions: RangeStart/RangeEnd). */
+export async function withParams<T>(over: Record<string, string>, fn: () => Promise<T>): Promise<T> {
+  const saved = params;
+  params = params.map((p) => (p.name in over ? { ...p, value: over[p.name] } : p));
+  try { return await fn(); } finally { params = saved; }
+}
+
 export function resolveText(s: string): string {
   return s.replace(PARAM_RE, (_m, name: string) => {
     const p = params.find((x) => x.name === name.trim());
@@ -31,9 +38,11 @@ export function paramFromM(name: string, expression: string, description?: strin
   const body = expression.replace(/\s+meta\s*\[[\s\S]*\]\s*$/, '').trim();
   const str = /^"((?:[^"]|"")*)"$/.exec(body);
   const date = /^#date(?:time)?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(body);
+  const dt = /^#datetime\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(body);
   const p2 = (x: string) => x.padStart(2, '0');
   const base = { name, ...(description ? { description } : {}) };
   if (str) return { ...base, type: 'text', value: str[1].replace(/""/g, '"') };
+  if (dt) return { ...base, type: 'datetime', value: `${dt[1]}-${p2(dt[2])}-${p2(dt[3])} ${p2(dt[4])}:${p2(dt[5])}:${p2(dt[6])}` };
   if (date) return { ...base, type: 'date', value: `${date[1]}-${p2(date[2])}-${p2(date[3])}` };
   if (/^-?\d+(\.\d+)?$/.test(body)) return { ...base, type: 'number', value: body };
   return { ...base, type: 'text', value: body };

@@ -138,9 +138,10 @@ export function ParamsDialog({ onClose }: { onClose: () => void }) {
                 <label className="pq-field">Nome<input type="text" value={p.name} onChange={(e) => set({ name: e.target.value })} /></label>
                 <label className="pq-field">Descrizione<input type="text" value={p.description ?? ''} onChange={(e) => set({ description: e.target.value || undefined })} /></label>
                 <label className="pq-field">Tipo
-                  <select value={p.type} onChange={(e) => set({ type: e.target.value as PQParam['type'] })}><option value="text">Testo</option><option value="number">Numero decimale</option><option value="date">Data</option></select>
+                  <select value={p.type} onChange={(e) => set({ type: e.target.value as PQParam['type'] })}><option value="text">Testo</option><option value="number">Numero decimale</option><option value="date">Data</option><option value="datetime">Data/ora</option></select>
                 </label>
-                <label className="pq-field">Valore corrente<input type={p.type === 'date' ? 'date' : 'text'} value={p.value} onChange={(e) => set({ value: e.target.value })} /></label>
+                <label className="pq-field">Valore corrente<input type={p.type === 'date' ? 'date' : p.type === 'datetime' ? 'datetime-local' : 'text'} step={p.type === 'datetime' ? 1 : undefined} value={p.type === 'datetime' ? p.value.replace(' ', 'T') : p.value}
+                  onChange={(e) => set({ value: p.type === 'datetime' ? (e.target.value.length === 16 ? e.target.value + ':00' : e.target.value).replace('T', ' ') : e.target.value })} /></label>
                 <div className="pq-note">Usare <code>#[{p.name || 'Nome'}]</code> nel percorso o nell'URL di un'origine e nei valori di Filtra righe.</div>
               </div>
             ) : <div className="pq-note">Nessun parametro. Usare <b>Nuovo</b>.</div>}
