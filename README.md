@@ -37,8 +37,12 @@ Non è affiliato a Microsoft; nome e logo sono volutamente diversi.
 | **Personalizza tema** — colori, testo, oggetti visivi, pagina e riquadro filtri, salvati nel JSON del tema | **Tema personalizzato** — caratteri e colori dei testi, sfondo e bordo degli oggetti visivi, riquadro filtri, colori di sentiment |
 | ![Traduzioni del modello](docs/screenshots/traduzioni.png) | ![Interfaccia in inglese](docs/screenshots/interfaccia-inglese.png) |
 | **Traduzioni del modello** — nomi di tabelle, colonne e misure per lingua, *Traduci con Claude*, anteprima con Visualizza › Lingua | **Interfaccia in inglese** — Opzioni › Impostazioni internazionali › Lingua dell'applicazione |
-| ![Aggiornamento disponibile](docs/screenshots/aggiornamento.png) | |
-| **Aggiornamenti** — avviso di una nuova release su GitHub, novità, download e installazione con riavvio | |
+| ![Aggiornamento disponibile](docs/screenshots/aggiornamento.png) | ![Query M nell'editor di Power Query](docs/screenshots/pq-query-m.png) |
+| **Aggiornamenti** — avviso di una nuova release su GitHub, novità, download e installazione con riavvio | **Linguaggio M completo** — query M con i passaggi applicati (uno per riga del `let`), gruppi di query, funzioni |
+| ![Funzione personalizzata e Invoca](docs/screenshots/pq-invoca.png) | ![Dipendenze query](docs/screenshots/pq-dipendenze.png) |
+| **Funzione personalizzata** — *Immetti parametri* e *Invoca*, query solo connessione | **Dipendenze query** — origini → query → modello, evidenziazione di una query |
+| ![Unisci con corrispondenza fuzzy](docs/screenshots/pq-unisci-fuzzy.png) | |
+| **Unisci query con corrispondenza fuzzy** — soglia, maiuscole/minuscole, spazi, numero di corrispondenze | |
 
 ## Scaricare e installare
 
@@ -281,6 +285,35 @@ confidenza restano nel `.mibx`), perché i nomi di quelle proprietà non sono do
   sotto la barra multifunzione; *Novità e aggiornamento…* mostra le note, scarica e installa la nuova versione (AppImage
   sostituito, `.deb` con apt) e riavvia. *Più tardi*, *Salta questa versione*; Guida › *Controlla aggiornamenti*.
 
+### Power Query: linguaggio M completo
+
+- **Interprete M** (`src/pq/m/`): tutto il linguaggio (let, if, each, funzioni con parametri facoltativi e tipizzati, `try …
+  otherwise`/`catch`, `error`, record, elenchi e intervalli, accesso a campi/elementi con `?`, proiezioni, tipi, `meta`, `@`)
+  con valutazione pigra ed errori a livello di cella, e una libreria standard di oltre 450 funzioni: `Text.*`, `Number.*`,
+  `Date`/`DateTime`/`DateTimeZone`/`Time`/`Duration.*`, `List.*`, `Record.*`, `Table.*` (anche `Group`, `Pivot`, `Unpivot`,
+  `NestedJoin`/`Join`, `Expand*`, `SplitColumn`, `ReplaceErrorValues`, `RemoveRowsWithErrors`…), `Splitter`/`Combiner`/
+  `Comparer`/`Replacer`, `Value`/`Type`, `Json`, `Xml`, `Binary`, `Uri`, `Expression.Evaluate`, join e raggruppamenti fuzzy.
+  Origini: `File.Contents`, `Folder.Files`/`Contents`, `Csv.Document`, `Excel.Workbook`, `Parquet.Document`, `Json.Document`,
+  `Xml.Tables`/`Document`, `Web.Contents` (con le credenziali salvate), `OData.Feed`, `Sql.Database`, `PostgreSQL`/`MySQL`/
+  `Oracle`/`Snowflake`, `Odbc` attraverso i connettori di MiB-BI. I dati passano da `electron/mhost.cjs` (DuckDB legge i file
+  locali): quando servono dati la valutazione si ferma, li carica e riparte.
+- **Editor**: l'*Editor avanzato* accetta qualsiasi M; quello che i passaggi di MiB-BI non sanno rappresentare diventa una
+  *query M* eseguita dall'interprete: i passaggi applicati sono le righe del `let` (anteprima di ogni passaggio, modifica
+  nella barra della formula, eliminazione), i comandi della barra multifunzione aggiungono passaggi M, *Qualità colonna*
+  conta gli errori. *Nuova origine › Query vuota*, *Funzione personalizzata*, *XML*.
+- **Funzioni personalizzate e Invoca**: una query che restituisce una funzione mostra *Immetti parametri* e *Invoca* (nuova
+  query con il risultato); le funzioni si usano in altre query e nelle colonne personalizzate.
+- **Query solo connessione** (menu della query › *Abilita caricamento*), **Gruppi di query** (*Sposta nel gruppo…*),
+  **Dipendenze query** (Visualizza), **Unisci con corrispondenza fuzzy** (somiglianza di Jaccard, soglia, maiuscole, spazi,
+  numero di corrispondenze), **Mantieni/Rimuovi errori** (Riduci righe).
+- File Power BI: query solo connessione (`expressions`) e gruppi (`queryGroups`, `queryGroup` di partizioni ed espressioni)
+  in `.pbit`/`.pbip` (TMSL e TMDL) e `.pbix` (`Expression`, `QueryGroup`). Un `.pbit` o `.pbip` aperto in MiB-BI ora carica
+  ogni tabella eseguendo tutto il suo M (prima veniva letto solo il file d'origine, senza i passaggi). Le conversioni di tipo
+  generate da MiB-BI indicano la cultura `"en-US"`, così i decimali con il punto restano corretti anche in Power BI in italiano.
+
+Limiti: `Pdf.Tables`, `Web.Page` e `Web.BrowserContents` non sono supportati; le query M non vengono ripiegate (folding) sul
+database: i dati vengono letti e trasformati in MiB-BI.
+
 ## File Power BI
 
 | Operazione | Supporto |
@@ -504,7 +537,7 @@ Fasi **1–12 completate**: interfaccia e report, Power Query, relazioni, DAX, f
 IA, interattività, Power Query avanzato, modello/DAX, pubblicazione e servizio Power BI. Poi: modifica interazioni, nuovi
 filtri dei dati, esportazione dati (1.5), tema scuro (1.6), calcoli visivi, funzioni DAX definite dall'utente e time
 intelligence a calendario (1.7), salvataggio PBIR/TMDL, Personalizza tema, traduzioni del modello, interfaccia in
-inglese, esportazione PowerPoint e avviso di aggiornamento (1.8).
+inglese, esportazione PowerPoint e avviso di aggiornamento (1.8), linguaggio M completo in Power Query.
 
 **Da verificare** (implementato, provato solo con file di prova o server finti):
 - servizio Power BI su un tenant reale: accesso, aree di lavoro, pubblicazione, download dei report, lettura dei
@@ -530,7 +563,9 @@ inglese, esportazione PowerPoint e avviso di aggiornamento (1.8).
 - interfaccia inglese: i messaggi di errore generati nel processo principale (lettura file, connettori) restano in
   italiano; i totali personalizzati non vanno nel PBIR (lo schema li prevede come calcoli visivi con metadati non documentati).
 
-**Possibili prossimi passi**: linguaggio M completo, modelli compositi/DirectQuery, Copilot con Claude.
+- Power Query: niente `Pdf.Tables`/`Web.Page`, nessun query folding delle query M.
+
+**Possibili prossimi passi**: modelli compositi/DirectQuery, Copilot con Claude.
 
 ## Test di fumo
 

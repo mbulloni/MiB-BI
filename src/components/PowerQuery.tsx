@@ -46,7 +46,8 @@ const fmtCell = (v: any, c: ColumnMeta) => {
   const t = pqTypeOf(c.type);
   if (t === 'int' || t === 'decimal') {
     const n = Number(v);
-    return Number.isFinite(n) ? n.toLocaleString(locale(), { useGrouping: false, maximumFractionDigits: 10 }) : String(v);
+    // 15 significant digits hide binary floating point noise (14706721.290000003), like Power Query.
+    return Number.isFinite(n) ? Number(n.toPrecision(15)).toLocaleString(locale(), { useGrouping: false, maximumFractionDigits: 10 }) : String(v);
   }
   if (t === 'bool') return v ? 'TRUE' : 'FALSE';
   return String(v);
