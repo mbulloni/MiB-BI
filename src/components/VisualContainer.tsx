@@ -19,6 +19,7 @@ import { DecompositionTreeVisual, KeyInfluencersVisual, SmartNarrativeVisual } f
 import { CardVisual, KpiVisual, MatrixVisual, MultiRowCardVisual, SlicerVisual, TableVisual, TextboxVisual } from '../visuals/Others';
 import { isChart, visualDef } from '../visuals/catalog';
 import { caption, fieldLabel } from '../format';
+import { words } from '../i18n';
 import { NULL_KEY } from '../query';
 import { Icon, VisualIcon } from './icons';
 import { Menu } from './Menu';
@@ -85,16 +86,17 @@ export function autoTitle(v: Visual): string {
   if (v.type === 'slicer') return lbl('category')[0] ?? '';
   if (v.type === 'scatter') {
     const parts = [...lbl('x'), ...lbl('y')];
-    return parts.length ? `${parts.join(' e ')}${f.details?.length ? ' per ' + caption(f.details[0].table, f.details[0].column) : ''}` : '';
+    return parts.length ? `${parts.join(` ${words().and} `)}${f.details?.length ? ` ${words().by} ` + caption(f.details[0].table, f.details[0].column) : ''}` : '';
   }
   if (v.type === 'gauge') return lbl('values')[0] ?? '';
-  if (v.type === 'kpi') return [...lbl('values'), ...lbl('target')].join(' e ');
+  if (v.type === 'kpi') return [...lbl('values'), ...lbl('target')].join(` ${words().and} `);
   const values = [...lbl('values'), ...lbl('lineValues')];
   // Date hierarchy levels are named by level ("per Anno, Trimestre, Mese e Giorno"), like Power BI.
   const dims = [...new Set([...(f.category ?? []), ...(f.rows ?? []), ...(f.legend ?? []), ...(f.columns ?? [])].map((x) => (x.datePart ? fieldLabel(x) : caption(x.table, x.column))))];
-  const list = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} e ${xs[xs.length - 1]}` : xs[0] ?? '');
+  const w = words();
+  const list = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} ${w.and} ${xs[xs.length - 1]}` : xs[0] ?? '');
   if (!values.length) return dims.join(', ');
-  return dims.length ? `${values.join(' e ')} per ${list(dims)}` : values.join(' e ');
+  return dims.length ? `${values.join(` ${w.and} `)} ${w.by} ${list(dims)}` : values.join(` ${w.and} `);
 }
 
 export function VisualBody({ v, selected }: { v: Visual; selected: boolean }) {

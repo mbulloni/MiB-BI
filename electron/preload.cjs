@@ -89,6 +89,7 @@ contextBridge.exposeInMainWorld('api', {
     close: () => ipcRenderer.send('win:close'),
     setTitle: (t) => ipcRenderer.send('win:title', t),
     setTheme: (t) => ipcRenderer.send('win:theme', t),
+    setLang: (l) => ipcRenderer.send('ui:lang', l),
     onState: (cb) => {
       const listener = (_e, max) => cb(max);
       ipcRenderer.on('win:state', listener);

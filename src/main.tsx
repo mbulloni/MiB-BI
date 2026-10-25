@@ -5,10 +5,14 @@ import { setLocale } from './format';
 import { globalOptions } from './options';
 import { initAppTheme } from './appTheme';
 
+import { setUiLang } from './i18n';
+import { api } from './api';
+
 setLocale(globalOptions().locale ?? 'it-IT');
 initAppTheme();
 
 createRoot(document.getElementById('root')!).render(<App />);
+if (globalOptions().uiLang === 'en') { setUiLang('en'); api.win.setLang('en'); }
 
 // Exposed for scripted smoke tests (see MIBBI_SCRIPT in electron/main.cjs).
 import { useStore } from './store';
@@ -32,3 +36,4 @@ import { interactionOf } from './visuals/interactions';
 (window as any).__mibbiQ = { filterSql, relativePeriod, slicerSpec, underlyingQuery, interactionOf };
 import { buildLayout, parseLayout } from './pbix/layout';
 (window as any).__mibbiLayout = { buildLayout, parseLayout };
+(window as any).__mibbiLang = setUiLang;

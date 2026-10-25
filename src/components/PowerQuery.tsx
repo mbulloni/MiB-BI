@@ -738,7 +738,7 @@ function Editor() {
           <button onClick={m(() => act.transform(T, 'lower'))}>minuscolo</button>
           <button onClick={m(() => act.transform(T, 'upper'))}>MAIUSCOLO</button>
           <button onClick={m(() => act.transform(T, 'proper'))}>Iniziali Maiuscole</button>
-          <button onClick={m(() => act.transform(T, 'trim'))}>Taglia</button>
+          <button data-en="Trim" onClick={m(() => act.transform(T, 'trim'))}>Taglia</button>
           <button onClick={m(() => act.transform(T, 'length'))}>Lunghezza</button>
         </Menu>
       )}

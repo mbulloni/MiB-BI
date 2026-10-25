@@ -8,6 +8,8 @@ export interface GlobalOptions {
   locale?: string;
   /** Tema dell'interfaccia: chiaro, scuro o come il sistema (il report mantiene il proprio tema). */
   appTheme?: 'light' | 'dark' | 'system';
+  /** Lingua dell'applicazione (interfaccia): italiano o inglese. */
+  uiLang?: 'it' | 'en';
   /** Progetti di Power BI (.pbip): report nel formato avanzato PBIR (cartella definition/) invece di report.json. */
   pbir?: boolean;
   /** Progetti di Power BI (.pbip): modello semantico in TMDL (cartella definition/) invece di model.bim. */

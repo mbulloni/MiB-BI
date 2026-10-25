@@ -146,6 +146,8 @@ interface Api {
     close(): void;
     setTitle(t: string): void;
     setTheme(t: 'light' | 'dark'): void;
+    /** Interface language: native dialog texts. */
+    setLang(l: 'it' | 'en'): void;
     onState(cb: (max: boolean) => void): () => void;
   };
 }

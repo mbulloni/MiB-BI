@@ -166,6 +166,18 @@ const FILTERS = {
   pbiviz: [{ name: 'Oggetto visivo di Power BI', extensions: ['pbiviz'] }],
 };
 
+// Interface language (Opzioni › Lingua dell'applicazione): file dialog filter names follow it.
+const FILTER_EN = {
+  'Testo/CSV': 'Text/CSV', 'Cartella di lavoro di Excel': 'Excel workbook', 'Database SQLite': 'SQLite database', 'Database di Access': 'Access database',
+  'Chiave (JSON, PEM, P8)': 'Key (JSON, PEM, P8)', 'Tutti i file di dati': 'All data files', 'File MiB-BI': 'MiB-BI file', 'Report (MiB-BI, Power BI)': 'Report (MiB-BI, Power BI)',
+  'File Power BI': 'Power BI file', 'Progetto di Power BI': 'Power BI project', 'Modello di Power BI': 'Power BI template', 'File di Power BI': 'Power BI file',
+  'File di tema JSON': 'JSON theme file', 'Oggetto visivo di Power BI': 'Power BI visual',
+};
+for (const list of Object.values(FILTERS)) for (const f of list) f.it = f.name;
+ipcMain.on('ui:lang', (_e, lang) => {
+  for (const list of Object.values(FILTERS)) for (const f of list) f.name = lang === 'en' ? FILTER_EN[f.it] ?? f.it : f.it;
+});
+
 // Custom visual (.pbiviz = zip with package.json + resources/<guid>.pbiviz.json). MIBBI_PBIVIZ_PATH skips the dialog.
 handle('cv:import', async () => {
   const file = process.env.MIBBI_PBIVIZ_PATH
@@ -406,6 +418,8 @@ ipcMain.on('win:theme', (_e, theme) => {
 
 // Dev aid: MIBBI_SHOT=out.png [MIBBI_SCRIPT=steps.js] runs a script in the page, captures it, exits.
 function screenshotMode(out, scriptFile) {
+  // Script progress: renderer console lines starting with STEP are echoed.
+  win.webContents.on('console-message', (e) => { const m = e.message ?? ''; if (m.startsWith('STEP')) console.log(m); });
   win.webContents.once('did-finish-load', async () => {
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     await wait(1500);

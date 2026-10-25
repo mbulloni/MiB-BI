@@ -9,6 +9,7 @@ import { cfInput, fieldKey, rangeOf, ruleValue, scaleColor } from './condfmt';
 import { font, pointColors, pt, queryRef, sp, units } from './pbistyle';
 import { applyAnalytics } from './analytics';
 import { THEME } from '../themes';
+import { tr } from '../i18n';
 
 /** ECharts axis label/title/grid settings from the visual's categoryAxis/valueAxis objects. */
 function axisLook(v: Visual, obj: 'categoryAxis' | 'valueAxis') {
@@ -48,7 +49,7 @@ function labelLook(v: Visual) {
 /** The default single-series color follows the theme's first color. */
 const main = (c: string) => (c.toUpperCase() === '#118DFF' ? PALETTE[0] : c);
 
-const catLabel = (c: string | null) => (c === null ? '(Vuoto)' : c);
+const catLabel = (c: string | null) => (c === null ? tr('(Vuoto)') : c);
 
 /** Continuous ("Continuo") category axis: a single date column without hierarchy (default, like Power BI)
  *  or a numeric one when the axis type is set to continuous. Returns the axis kind, or null for categorical. */
@@ -96,7 +97,7 @@ function cartesian(v: Visual, d: VisualData, selected: string | null | undefined
   const cat = d.items.find((i) => i.well === 'category');
   // "Expand all" levels: one combined category per row ("2014 Trim 1").
   const catItems = d.items.filter((i) => i.well === 'category');
-  const ck = (r: Record<string, any>): string | null => (catItems.length > 1 ? catItems.map((c) => r[c.alias] ?? '(Vuoto)').join(' ') : r[cat!.alias]);
+  const ck = (r: Record<string, any>): string | null => (catItems.length > 1 ? catItems.map((c) => r[c.alias] ?? tr('(Vuoto)')).join(' ') : r[cat!.alias]);
   const leg = d.items.find((i) => i.well === 'legend');
   const vals = d.items.filter((i) => i.well === 'values');
   const categories = cat ? uniq(d.rows.map((r) => ck(r))) : [null];
@@ -441,7 +442,7 @@ function waterfall(v: Visual, d: VisualData, selected: string | null | undefined
     const faded = selected !== undefined && i < categories.length && categories[i] !== selected;
     return { type: 'rect', shape: { x: a[0] - w / 2, y: Math.min(a[1], b[1]), width: w, height: Math.max(1, Math.abs(a[1] - b[1])) }, style: { fill: color, opacity: faded ? 0.35 : 1 } };
   };
-  const series = ([['up', 'Aumento', THEME.good], ['down', 'Riduzione', THEME.bad], ['total', 'Totale', PALETTE[0]]] as const).map(([k, name, color]) => ({
+  const series = ([['up', tr('Aumento'), THEME.good], ['down', tr('Riduzione'), THEME.bad], ['total', tr('Totale'), PALETTE[0]]] as const).map(([k, name, color]) => ({
     name, type: 'custom', color, renderItem: bar(color), encode: { x: 0, y: [1, 2] }, data: steps[k],
     label: { show: f.dataLabels, position: 'top', fontSize: THEME.dataLabel.size, color: THEME.dataLabel.color, formatter: (p: any) => fmtAuto(p.data.v) },
   }));
@@ -451,8 +452,8 @@ function waterfall(v: Visual, d: VisualData, selected: string | null | undefined
       textStyle: { fontFamily: THEME.text.label.font }, animationDuration: 300,
       legend: { show: f.legendShow, top: 0, left: 0, icon: 'circle', itemWidth: 8, itemHeight: 8, textStyle: { color: THEME.axis.color, fontSize: THEME.axis.size } },
       grid: { left: 28, right: 16, bottom: 30, top: f.legendShow ? 28 : 12, containLabel: true },
-      tooltip: { trigger: 'item', confine: true, formatter: (p: any) => `${p.data.idx < categories.length ? catLabel(categories[p.data.idx]) : 'Totale'}<br/>${val ? fieldLabel(val.field) : ''}: <b>${fmtFull(p.data.v)}</b>` },
-      xAxis: { type: 'category', show: f.xAxisShow, data: [...categories.map(catLabel), 'Totale'], axisTick: { show: false }, axisLine: { lineStyle: { color: '#C8C6C4' } }, axisLabel: { color: THEME.axis.color, fontSize: THEME.axis.size, hideOverlap: true } },
+      tooltip: { trigger: 'item', confine: true, formatter: (p: any) => `${p.data.idx < categories.length ? catLabel(categories[p.data.idx]) : tr('Totale')}<br/>${val ? fieldLabel(val.field) : ''}: <b>${fmtFull(p.data.v)}</b>` },
+      xAxis: { type: 'category', show: f.xAxisShow, data: [...categories.map(catLabel), tr('Totale')], axisTick: { show: false }, axisLine: { lineStyle: { color: '#C8C6C4' } }, axisLabel: { color: THEME.axis.color, fontSize: THEME.axis.size, hideOverlap: true } },
       yAxis: { type: 'value', show: f.yAxisShow, scale: false, splitLine: { show: f.gridlines, lineStyle: { color: '#E1DFDD', type: 'dotted' } }, axisLabel: { color: THEME.axis.color, fontSize: THEME.axis.size, formatter: (x: number) => fmtAuto(x, 0) } },
       series,
     },

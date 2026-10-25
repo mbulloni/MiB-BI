@@ -10,6 +10,7 @@ import { fmtWith, setLocale } from '../format';
 const LOCALES: [string, string][] = [['it-IT', 'Italiano (Italia)'], ['it-CH', 'Italiano (Svizzera)'], ['en-US', 'Inglese (Stati Uniti)'], ['en-GB', 'Inglese (Regno Unito)'], ['de-DE', 'Tedesco (Germania)'], ['fr-FR', 'Francese (Francia)'], ['es-ES', 'Spagnolo (Spagna)'], ['pt-BR', 'Portoghese (Brasile)']];
 import { DataSourceSettings } from './SourceDialogs';
 import { setAppTheme, useAppTheme } from '../appTheme';
+import { setUiLang } from '../i18n';
 
 type Section = 'theme' | 'pbip' | 'load' | 'intl' | 'python' | 'r' | 'qna' | 'fileLoad' | 'reportSettings';
 
@@ -68,6 +69,12 @@ export function OptionsDialog() {
               <p>PBIR e TMDL sono i formati predefiniti di Power BI Desktop: si leggono bene nei diff di git e si possono modificare con un editor di testo. Disattivati, il progetto usa i vecchi report.json e model.bim (PBIR-Legacy e TMSL).</p>
             </>}
             {sec === 'intl' && <>
+              <h3>Lingua dell'applicazione</h3>
+              <label className="pq-field">Interfaccia di MiB-BI: menu, barra multifunzione, riquadri e finestre. Il contenuto del report (titoli scritti, dati) non cambia.
+                <select value={opts.uiLang ?? 'it'} onChange={(e) => { const l = e.target.value as 'it' | 'en'; setOpts(setGlobalOptions({ uiLang: l })); setUiLang(l); api.win.setLang(l); s.set({ dataVersion: s.dataVersion + 1 }); }}>
+                  <option value="it">Italiano</option>
+                  <option value="en">English</option>
+                </select></label>
               <h3>Impostazioni internazionali</h3>
               <label className="pq-field">Formato di numeri e date (oggetti visivi, nomi dei mesi della gerarchia date, cultura del modello esportato)
                 <select value={opts.locale ?? 'it-IT'} onChange={(e) => { setOpts(setGlobalOptions({ locale: e.target.value })); setLocale(e.target.value); s.set({ dataVersion: s.dataVersion + 1 }); }}>

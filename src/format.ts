@@ -1,4 +1,5 @@
 import type { Agg, ColumnMeta, FieldRef } from './types';
+import { tr, uiLang } from './i18n';
 
 const NUMERIC = /^(TINYINT|SMALLINT|INTEGER|BIGINT|HUGEINT|UTINYINT|USMALLINT|UINTEGER|UBIGINT|FLOAT|REAL|DOUBLE|DECIMAL.*)$/i;
 export const isNumeric = (c?: ColumnMeta) => !!c && NUMERIC.test(c.type);
@@ -29,9 +30,10 @@ export const caption = (table: string, name?: string) => (name === undefined ? C
 
 /** Name of a field as shown to the reader (titles, axes, headers): refLabel with the model translation. */
 export function fieldLabel(f: FieldRef): string {
-  if (f.datePart || f.agg === 'visualCalc' || !CAPTIONS[`${f.table}\u0001${f.column}`]) return refLabel(f);
+  if (f.agg === 'visualCalc' || (uiLang() === 'it' && (f.datePart || !CAPTIONS[`${f.table}\u0001${f.column}`]))) return refLabel(f);
+  if (f.datePart) return tr(refLabel(f));
   const name = caption(f.table, f.column);
-  return f.agg === 'none' || f.agg === 'measure' ? name : `${AGG_PREFIX[f.agg]} ${name}`;
+  return f.agg === 'none' || f.agg === 'measure' ? name : `${tr(AGG_PREFIX[f.agg])} ${name}`;
 }
 
 /** Impostazioni internazionali (Opzioni): locale of numbers and dates shown in visuals. */
