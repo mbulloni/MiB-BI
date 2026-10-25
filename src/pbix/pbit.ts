@@ -8,6 +8,8 @@ import { locale, monthNames, quarterPrefix } from '../format';
 import { levelName, type ColumnMeta, type Report, type TableMeta } from '../types';
 import { appendSteps, mName, mStr, mText } from '../pq/m';
 import { buildLayout, DATE_HIERARCHY } from './layout';
+import { layoutToPbir } from './pbir';
+import { tmslToTmdl } from './tmdl';
 
 export interface PbitPart { path: string; utf16?: string; utf8bom?: string; utf8?: string; dataUrl?: string; }
 
@@ -300,8 +302,9 @@ export function buildModelSchema(report: Report, tables: TableMeta[], autoDates 
   };
 }
 
-/** Power BI project (.pbip): legacy report.json + TMSL model.bim, text files suited to git. */
-export function buildPbipParts(report: Report, tables: TableMeta[]): { path: string; text?: string; dataUrl?: string }[] {
+/** Power BI project (.pbip): report as PBIR (definition/ folder) or legacy report.json, model as TMDL
+ *  (definition/ folder) or TMSL model.bim. Text files suited to git; `clean` = generated paths to remove first. */
+export function buildPbipParts(report: Report, tables: TableMeta[], fmt: { pbir?: boolean; tmdl?: boolean } = { pbir: true, tmdl: true }): { path: string; text?: string; dataUrl?: string }[] {
   const { layout, resources } = buildLayout(report.pages, report.reportFilters, report.theme, report.bookmarks, { dateHierarchies: autoDateOn(report), dateTables: Object.keys(report.dateTables ?? {}), hierarchies: report.hierarchies, filterByDefault: report.options?.filterByDefault });
   const j = (o: unknown) => JSON.stringify(o, null, 2);
   const platform = (type: string) => ({
@@ -309,14 +312,22 @@ export function buildPbipParts(report: Report, tables: TableMeta[]): { path: str
     metadata: { type, displayName: '__BASE__' },
     config: { version: '2.0', logicalId: crypto.randomUUID() },
   });
+  const themeName = Object.keys(resources).find((n) => n.endsWith('.json'));
+  const reportParts = fmt.pbir
+    ? Object.entries(layoutToPbir(layout, themeName)).map(([p, o]) => ({ path: `__BASE__.Report/definition/${p}`, text: j(o) }))
+    : [{ path: '__BASE__.Report/report.json', text: j(JSON.parse(layout)) }];
+  const model = buildModelSchema(report, tables);
+  const modelParts = fmt.tmdl
+    ? Object.entries(tmslToTmdl(model)).map(([p, t]) => ({ path: `__BASE__.SemanticModel/definition/${p}`, text: t }))
+    : [{ path: '__BASE__.SemanticModel/model.bim', text: j(model) }];
   return [
     { path: '__BASE__.pbip', text: j({ version: '1.0', artifacts: [{ report: { path: '__BASE__.Report' } }], settings: { enableAutoRecovery: true } }) },
-    { path: '__BASE__.Report/definition.pbir', text: j({ version: '1.0', datasetReference: { byPath: { path: '../__BASE__.SemanticModel' } } }) },
-    { path: '__BASE__.Report/report.json', text: j(JSON.parse(layout)) },
+    { path: '__BASE__.Report/definition.pbir', text: j({ $schema: 'https://developer.microsoft.com/json-schemas/fabric/item/report/definitionProperties/2.0.0/schema.json', version: '4.0', datasetReference: { byPath: { path: '../__BASE__.SemanticModel' } } }) },
+    ...reportParts,
     ...Object.entries(resources).map(([n, d]) => ({ path: `__BASE__.Report/StaticResources/RegisteredResources/${n}`, dataUrl: d })),
     ...customVisualFiles(report).map((f) => ({ path: `__BASE__.Report/${f.path}`, text: f.text })),
-    { path: '__BASE__.SemanticModel/definition.pbism', text: j({ version: '1.0', settings: {} }) },
-    { path: '__BASE__.SemanticModel/model.bim', text: j(buildModelSchema(report, tables)) },
+    { path: '__BASE__.SemanticModel/definition.pbism', text: j({ $schema: 'https://developer.microsoft.com/json-schemas/fabric/item/semanticModel/definitionProperties/1.0.0/schema.json', version: '4.0', settings: {} }) },
+    ...modelParts,
     // Microsoft Fabric Git integration metadata.
     { path: '__BASE__.Report/.platform', text: j(platform('Report')) },
     { path: '__BASE__.SemanticModel/.platform', text: j(platform('SemanticModel')) },

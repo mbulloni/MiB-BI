@@ -790,8 +790,10 @@ export const useStore = create<State>((set, get) => {
       const base = (filePath?.split('/').pop() ?? sourceName ?? 'Report').replace(/\.(mibx|pbix|pbit|pbip)$/i, '');
       try {
         await prepareCfExport();
-        const out = await api.savePbip(buildPbipParts(report, tables), base + '.pbip');
-        if (out) get().notify(`Progetto salvato: ${out.split('/').pop()} con le cartelle .Report e .SemanticModel (file di testo, adatti a git).`, 9000);
+        const o = globalOptions();
+        const fmt = { pbir: o.pbir !== false, tmdl: o.tmdl !== false };
+        const out = await api.savePbip(buildPbipParts(report, tables, fmt), base + '.pbip');
+        if (out) get().notify(`Progetto salvato: ${out.split('/').pop()} con le cartelle .Report (${fmt.pbir ? 'PBIR' : 'report.json'}) e .SemanticModel (${fmt.tmdl ? 'TMDL' : 'model.bim'}), file di testo adatti a git.`, 9000);
       } catch (e: any) {
         get().notify('Salvataggio del progetto non riuscito: ' + e.message);
       }

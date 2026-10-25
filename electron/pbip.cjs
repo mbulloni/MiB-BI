@@ -136,6 +136,7 @@ function parseTmdl(text) {
   const root = { kind: 'root', children: [], props: {}, indent: -1 };
   const stack = [root];
   let i = 0;
+  let doc = [];
   const block = (start, baseIndent, firstLine) => {
     // Collect an expression that continues on the following, deeper-indented lines.
     const out = [];
@@ -155,14 +156,16 @@ function parseTmdl(text) {
     const line = lines[i];
     const t = line.trim();
     i++;
-    if (!t || t.startsWith('///') || t.startsWith('//')) continue;
+    if (t.startsWith('///')) { doc.push(t.slice(3).replace(/^ /, '')); continue; }
+    if (!t || t.startsWith('//')) { if (t) doc = []; continue; }
     const ind = indentOf(line);
     while (stack.length > 1 && stack[stack.length - 1].indent >= ind) stack.pop();
     const parent = stack[stack.length - 1];
     const kw = /^(table|column|measure|partition|relationship|hierarchy|level|annotation|expression|model|database|role|tablePermission|culture|calculationGroup|calculationItem|perspective|dataSource|ref|cultureInfo|linguisticMetadata|variation|changedProperty|extendedProperty|queryGroup|function|calendar|calendarColumnGroup)\b(?!\s*:)\s*(.*)$/.exec(t);
     if (kw) {
       const [name, rest] = takeName(kw[2]);
-      const obj = { kind: kw[1], name, props: {}, children: [], indent: ind };
+      const obj = { kind: kw[1], name, props: {}, children: [], indent: ind, ...(doc.length ? { description: doc.join('\n') } : {}) };
+      doc = [];
       const eq = /^\s*=\s*(.*)$/.exec(rest);
       if (eq) {
         const [value, next] = block(i, ind, eq[1]);
@@ -173,6 +176,7 @@ function parseTmdl(text) {
       stack.push(obj);
       continue;
     }
+    doc = [];
     const prop = /^([A-Za-z][\w]*)\s*(:|=)\s*(.*)$/.exec(t);
     if (prop) {
       if (prop[2] === '=') {
@@ -219,7 +223,7 @@ function fromTmdl(dir, out) {
     const measures = t.children.filter((c) => c.kind === 'measure').map((c) => ({ name: c.name, expression: c.value ?? '', formatString: c.props.formatString }));
     pushTable(out, t.name, m, dax, columns, measures, (c) => c.type);
   }
-  pushParams(out, objs.filter((o) => o.kind === 'expression').map((e) => ({ name: e.name, expression: e.value ?? '', description: e.props.description })));
+  pushParams(out, objs.filter((o) => o.kind === 'expression').map((e) => ({ name: e.name, expression: e.value ?? '', description: e.description ?? e.props.description })));
   const mx = extras(out);
   for (const t of objs.filter((o) => o.kind === 'table')) {
     for (const h of t.children.filter((c) => c.kind === 'hierarchy')) {
@@ -231,7 +235,7 @@ function fromTmdl(dir, out) {
     if (unquote(t.props.dataCategory) === 'Time' && key) mx.dateTables[t.name] = key.name;
     for (const c of t.children.filter((x) => x.kind === 'calendar')) {
       mx.calendars.push({
-        name: c.name, table: t.name,
+        name: c.name, table: t.name, ...(c.description ? { description: c.description } : {}),
         groups: c.children.filter((g) => g.kind === 'calendarColumnGroup').map((g) => {
           const unit = (g.value ?? '').trim();
           const many = (k) => (g.multi?.[k] ?? []).map(unquote);
@@ -248,7 +252,7 @@ function fromTmdl(dir, out) {
       });
     }
   }
-  for (const f of objs.filter((o) => o.kind === 'function')) mx.functions.push({ name: f.name, expression: f.value ?? '' });
+  for (const f of objs.filter((o) => o.kind === 'function')) mx.functions.push({ name: f.name, expression: f.value ?? '', ...(f.description ? { description: f.description } : {}) });
   for (const r of objs.filter((o) => o.kind === 'role')) {
     mx.roles.push({ name: r.name, filters: r.children.filter((p) => p.kind === 'tablePermission' && (p.value ?? '').trim()).map((p) => ({ table: p.name, expression: p.value })) });
   }
@@ -332,6 +336,12 @@ function read(file) {
 /** Writes a PBIP project next to `file` (X.pbip, X.Report/, X.SemanticModel/) from text/data-URL parts. */
 function write(file, parts) {
   const base = path.dirname(file);
+  // Saving over a project: drop the report/model definitions of either format, so no stale page,
+  // visual or table survives (Power BI would load files that are no longer part of the report).
+  const name = path.basename(file, path.extname(file));
+  for (const p of [`${name}.Report/definition`, `${name}.Report/report.json`, `${name}.SemanticModel/definition`, `${name}.SemanticModel/model.bim`]) {
+    fs.rmSync(path.join(base, p), { recursive: true, force: true });
+  }
   for (const p of parts) {
     const dest = path.join(base, p.path);
     if (!dest.startsWith(base)) continue;

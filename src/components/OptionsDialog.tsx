@@ -11,7 +11,7 @@ const LOCALES: [string, string][] = [['it-IT', 'Italiano (Italia)'], ['it-CH', '
 import { DataSourceSettings } from './SourceDialogs';
 import { setAppTheme, useAppTheme } from '../appTheme';
 
-type Section = 'theme' | 'load' | 'intl' | 'python' | 'r' | 'qna' | 'fileLoad' | 'reportSettings';
+type Section = 'theme' | 'pbip' | 'load' | 'intl' | 'python' | 'r' | 'qna' | 'fileLoad' | 'reportSettings';
 
 export function OptionsDialog() {
   const s = useStore();
@@ -44,6 +44,7 @@ export function OptionsDialog() {
             {nav('load', 'Caricamento dati')}
             {nav('theme', 'Tema')}
             {nav('intl', 'Impostazioni internazionali')}
+            {nav('pbip', 'Progetti di Power BI')}
             {nav('python', 'Scripting Python')}
             {nav('r', 'Scripting R')}
             {nav('qna', 'Domande e risposte')}
@@ -57,6 +58,14 @@ export function OptionsDialog() {
               <h3>Rilevamento relazioni</h3>
               <div className="fmt-row inline"><span>Rileva automaticamente le nuove relazioni dopo il caricamento dei dati</span>
                 <Toggle on={opts.autoRelationships} onChange={(b) => setOpts(setGlobalOptions({ autoRelationships: b }))} /></div>
+            </>}
+            {sec === 'pbip' && <>
+              <h3>Salvataggio dei progetti (.pbip)</h3>
+              <div className="fmt-row inline"><span>Salva i report nel formato avanzato PBIR (un file JSON per pagina, oggetto visivo e segnalibro)</span>
+                <Toggle on={opts.pbir !== false} onChange={(b) => setOpts(setGlobalOptions({ pbir: b }))} /></div>
+              <div className="fmt-row inline"><span>Salva il modello semantico in TMDL (un file di testo per tabella, ruolo e lingua)</span>
+                <Toggle on={opts.tmdl !== false} onChange={(b) => setOpts(setGlobalOptions({ tmdl: b }))} /></div>
+              <p>PBIR e TMDL sono i formati predefiniti di Power BI Desktop: si leggono bene nei diff di git e si possono modificare con un editor di testo. Disattivati, il progetto usa i vecchi report.json e model.bim (PBIR-Legacy e TMSL).</p>
             </>}
             {sec === 'intl' && <>
               <h3>Impostazioni internazionali</h3>

@@ -8,10 +8,14 @@ export interface GlobalOptions {
   locale?: string;
   /** Tema dell'interfaccia: chiaro, scuro o come il sistema (il report mantiene il proprio tema). */
   appTheme?: 'light' | 'dark' | 'system';
+  /** Progetti di Power BI (.pbip): report nel formato avanzato PBIR (cartella definition/) invece di report.json. */
+  pbir?: boolean;
+  /** Progetti di Power BI (.pbip): modello semantico in TMDL (cartella definition/) invece di model.bim. */
+  tmdl?: boolean;
 }
 
 const KEY = 'mib-bi.options';
-const DEFAULTS: GlobalOptions = { autoRelationships: true, locale: 'it-IT' };
+const DEFAULTS: GlobalOptions = { autoRelationships: true, locale: 'it-IT', pbir: true, tmdl: true };
 
 export function globalOptions(): GlobalOptions {
   try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) ?? '{}') }; } catch { return { ...DEFAULTS }; }
