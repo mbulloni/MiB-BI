@@ -25,6 +25,9 @@ export interface PowerBIModel {
     functions?: import('./types').DaxFunction[];
     calendars?: import('./types').CalendarDef[];
     cultures?: import('./types').Culture[];
+    /** Connection-only queries and query groups (Power Query). */
+    queries?: { name: string; code: string }[];
+    groups?: Record<string, string>;
     roles: { name: string; filters: { table: string; expression: string }[] }[];
   };
   warnings: string[];

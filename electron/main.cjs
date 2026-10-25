@@ -150,6 +150,7 @@ const FILTERS = {
   csv: [{ name: 'Testo/CSV', extensions: ['csv', 'txt', 'tsv'] }],
   excel: [{ name: 'Cartella di lavoro di Excel', extensions: ['xlsx'] }],
   json: [{ name: 'JSON', extensions: ['json', 'ndjson', 'jsonl'] }],
+  xml: [{ name: 'XML', extensions: ['xml'] }],
   parquet: [{ name: 'Parquet', extensions: ['parquet'] }],
   sqlite: [{ name: 'Database SQLite', extensions: ['sqlite', 'sqlite3', 'db'] }],
   access: [{ name: 'Database di Access', extensions: ['accdb', 'mdb'] }],

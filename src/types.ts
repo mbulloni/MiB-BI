@@ -18,6 +18,8 @@ export interface TableMeta {
     sharepoint?: { site: string; folder?: string; ext?: string; list?: string };
     /** Home › Immetti dati: values typed in MiB-BI (text; typed by a changeType step), saved in the report. */
     inline?: { columns: string[]; rows: (string | null)[][] };
+    /** Query defined by M code, evaluated by the M interpreter (src/pq/m) instead of compiled to SQL. */
+    mcode?: string;
   };
   /** Power Query applied steps, compiled to a SQL pipeline by pq/compile.ts. */
   steps?: Step[];
@@ -363,6 +365,10 @@ export interface Report {
   functions?: DaxFunction[];
   /** Calendari (Strumenti tabella › Opzioni calendario). */
   calendars?: CalendarDef[];
+  /** Power Query queries that are not loaded in the model (Abilita caricamento off): functions, helper queries. */
+  pqQueries?: { name: string; code: string }[];
+  /** Power Query groups: query name → group path ("Origini/Vendite"). */
+  pqGroups?: Record<string, string>;
   /** Traduzioni del modello (TOM cultures): captions, descriptions and display folders per language. */
   cultures?: Culture[];
 }

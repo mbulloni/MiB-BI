@@ -1,5 +1,7 @@
 /** Power Query applied steps: display names (as in Power BI's Italian UI) and query references. */
 import type { PQType, Step, TableMeta, TransformFn } from '../types';
+import { mIdentifiers } from './m/parse';
+import { mName } from './m';
 
 export type QueryDef = Pick<TableMeta, 'name' | 'source' | 'steps'>;
 
@@ -63,6 +65,8 @@ export function stepNames(steps: Step[], reserved: string[] = ['Origine']): stri
 /** Other queries a query reads from (source reference, merges, appends). */
 export function dependencies(q: QueryDef): string[] {
   const out = new Set<string>();
+  // M queries: every identifier (callers keep the ones that are query names).
+  if (q.source.mcode !== undefined) return [...new Set(mIdentifiers(q.source.mcode).map((x) => x.name))];
   if (q.source.ref) out.add(q.source.ref);
   for (const s of q.steps ?? []) {
     if (s.kind === 'merge') out.add(s.table);
@@ -73,6 +77,7 @@ export function dependencies(q: QueryDef): string[] {
 
 /** Rewrites references to a renamed query inside a query definition (in place). */
 export function renameQueryRef(q: QueryDef, from: string, to: string) {
+  if (q.source.mcode !== undefined) { q.source.mcode = renameInM(q.source.mcode, from, to); return; }
   if (q.source.ref === from) q.source.ref = to;
   for (const s of q.steps ?? []) {
     if (s.kind === 'merge' && s.table === from) s.table = to;
@@ -89,4 +94,12 @@ export function pqTypeOf(duck: string): PQType {
   if (t.startsWith('TIMESTAMP')) return 'datetime';
   if (t === 'BOOLEAN') return 'bool';
   return 'text';
+}
+
+/** Renames identifier references in M code (query renames). */
+export function renameInM(code: string, from: string, to: string): string {
+  const ids = mIdentifiers(code).filter((x) => x.name === from).reverse();
+  let out = code;
+  for (const x of ids) out = out.slice(0, x.start) + mName(to) + out.slice(x.end);
+  return out;
 }

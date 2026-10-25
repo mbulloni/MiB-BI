@@ -30,6 +30,7 @@ function fromTmsl(schema, out) {
   for (const r of model.relationships ?? []) pushRel(out, r);
   pushParams(out, (model.expressions ?? []).map((e) => ({ name: e.name, expression: joinExpr(e.expression), description: e.description })));
   const mx = extras(out);
+  pushQueries(mx, (model.expressions ?? []).map((e) => ({ name: e.name, code: joinExpr(e.expression), group: e.queryGroup, kind: e.kind })), (model.tables ?? []).map((t) => ({ name: t.name, group: (t.partitions ?? []).find((p) => p.queryGroup)?.queryGroup })));
   for (const t of model.tables ?? []) {
     for (const h of t.hierarchies ?? []) {
       mx.hierarchies.push({ table: t.name, name: h.name, levels: [...(h.levels ?? [])].sort((a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0)).map((l) => ({ name: l.name, column: l.column })) });
@@ -82,9 +83,18 @@ function pushCulture(mx, name, tables) {
   mx.cultures.push(c);
 }
 
+/** Connection-only queries (shared M expressions that are not parameters) and query groups. */
+function pushQueries(mx, exprs, tables) {
+  for (const e of exprs) {
+    if ((e.kind ?? 'm') === 'm' && !/IsParameterQuery\s*=\s*true/i.test(e.code ?? '')) mx.queries.push({ name: e.name, code: e.code });
+    if (e.group) mx.groups[e.name] = unquote(e.group);
+  }
+  for (const t of tables) if (t.group) mx.groups[t.name] = unquote(t.group);
+}
+
 /** Model properties besides tables/relationships/measures (same shape as read_pbix.py). */
 function extras(out) {
-  out.model ??= { hierarchies: [], folders: [], dateTables: {}, calcGroups: [], roles: [], functions: [], calendars: [], cultures: [] };
+  out.model ??= { hierarchies: [], folders: [], dateTables: {}, calcGroups: [], roles: [], functions: [], calendars: [], cultures: [], queries: [], groups: {} };
   return out.model;
 }
 
@@ -247,6 +257,8 @@ function fromTmdl(dir, out) {
   }
   pushParams(out, objs.filter((o) => o.kind === 'expression').map((e) => ({ name: e.name, expression: e.value ?? '', description: e.description ?? e.props.description })));
   const mx = extras(out);
+  pushQueries(mx, objs.filter((o) => o.kind === 'expression').map((e) => ({ name: e.name, code: e.value ?? '', group: e.props.queryGroup })),
+    objs.filter((o) => o.kind === 'table').map((t) => ({ name: t.name, group: t.children.find((c) => c.kind === 'partition' && c.props.queryGroup)?.props.queryGroup })));
   for (const t of objs.filter((o) => o.kind === 'table')) {
     for (const h of t.children.filter((c) => c.kind === 'hierarchy')) {
       mx.hierarchies.push({ table: t.name, name: h.name, levels: h.children.filter((l) => l.kind === 'level').map((l) => ({ name: l.name, column: unquote(l.props.column) ?? l.name })) });

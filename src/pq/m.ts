@@ -80,7 +80,8 @@ export function stepM(s: Step, prev: string, names: string[]): string[] {
     case 'removeColumns': return [`Table.RemoveColumns(${p}, ${mList(s.columns)})`];
     case 'selectColumns': return [`Table.SelectColumns(${p}, ${mList(s.columns)})`];
     case 'renameColumns': return [`Table.RenameColumns(${p}, {${s.renames.map(([a, b]) => `{${mStr(a)}, ${mStr(b)}}`).join(', ')}})`];
-    case 'changeType': return [`Table.TransformColumnTypes(${p}, {${s.columns.map(([c, t]) => `{${mStr(c)}, ${M_TYPE[t]}}`).join(', ')}})`];
+    // Explicit culture: text numbers and dates use "." and ISO forms, like the SQL engine (and Power BI in any locale).
+    case 'changeType': return [`Table.TransformColumnTypes(${p}, {${s.columns.map(([c, t]) => `{${mStr(c)}, ${M_TYPE[t]}}`).join(', ')}}, "en-US")`];
     case 'filterRows': return [`Table.SelectRows(${p}, each ${filterM(s)})`];
     case 'sort': return [`Table.Sort(${p}, {${s.by.map(([c, d]) => `{${mStr(c)}, ${d === 'asc' ? 'Order.Ascending' : 'Order.Descending'}}`).join(', ')}})`];
     case 'removeDuplicates': return [s.columns.length ? `Table.Distinct(${p}, ${mList(s.columns)})` : `Table.Distinct(${p})`];

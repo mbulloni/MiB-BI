@@ -192,15 +192,18 @@ export interface CompileOptions {
   upto?: number;
   /** read_csv_auto(...) etc. for a file source (main process, loads extensions). */
   srcExpr: (source: TableMeta['source']) => Promise<string>;
+  /** Table holding the result of an M query (evaluated by the M interpreter); default = the loaded model table. */
+  mTable?: (name: string, code: string) => Promise<string>;
 }
 
 /** Full SELECT for a query, resolving references among `all` queries. */
 export async function compileQuery(q: QueryDef, all: QueryDef[], opts: CompileOptions, stack: string[] = []): Promise<string> {
   if (stack.includes(q.name)) throw new Error(`Riferimento circolare tra query: ${[...stack, q.name].join(' → ')}`);
+  if (q.source.mcode !== undefined) return `SELECT * FROM ${opts.mTable ? await opts.mTable(q.name, q.source.mcode) : qi(q.name)}`;
   const sub = (name: string) => {
     const other = all.find((x) => x.name === name);
     if (!other) throw new Error(`La query "${name}" non esiste.`);
-    return compileQuery(other, all, { srcExpr: opts.srcExpr }, [...stack, q.name]);
+    return compileQuery(other, all, { srcExpr: opts.srcExpr, mTable: opts.mTable }, [...stack, q.name]);
   };
   const src = q.source.ref ? `(${await sub(q.source.ref)})` : await opts.srcExpr(q.source);
   const steps = (q.steps ?? []).slice(0, opts.upto ?? undefined);

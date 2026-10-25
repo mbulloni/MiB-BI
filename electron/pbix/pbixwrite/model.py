@@ -28,6 +28,8 @@ TPL.update({
     'Calendar': {'ID': 0, 'TableID': 0, 'Name': '', 'Description': None, 'LineageTag': None, 'SourceLineageTag': None, 'ModifiedTime': 0},
     'CalendarColumnGroup': {'ID': 0, 'CalendarID': 0, 'TimeUnit': 0, 'ModifiedTime': 0},
     'CalendarColumnReference': {'ID': 0, 'CalendarColumnGroupID': 0, 'ColumnID': 0, 'IsPrimaryColumn': 0, 'ModifiedTime': 0},
+    # Gruppi di query.
+    'QueryGroup': {'ID': 0, 'ModelID': 1, 'Folder': '', 'Description': None},
     # Model translations.
     'Culture': {'ID': 0, 'ModelID': 1, 'Name': '', 'LinguisticMetadataID': None, 'ModifiedTime': 0, 'StructureModifiedTime': 0},
     'ObjectTranslation': {'ID': 0, 'CultureID': 0, 'ObjectID': 0, 'ObjectType': 0, 'Property': 1, 'Value': '', 'ModifiedTime': 0, 'Altered': 0},
@@ -197,6 +199,7 @@ class Builder:
         self.rel_ids = {}
         self.hier_ids = {}
         self.measure_ids = {}
+        self.qgroups = {}
 
     # ---- helpers -------------------------------------------------------------------------------------------
     def annotations(self, obj, obj_id, kind):
@@ -293,6 +296,8 @@ class Builder:
         db.ins('Partition', 'Partition_CT' if calc_table else ('Partition_CG' if calc_group else 'Partition'), ID=pid, TableID=tid,
                Name=part.get('name', name), QueryDefinition=_text(src.get('expression')),
                PartitionStorageID=ps_id, ModifiedTime=now, RefreshedTime=now, Mode=mode)
+        if part.get('queryGroup') in self.qgroups:
+            db.set('Partition', pid, QueryGroupID=self.qgroups[part['queryGroup']])
         tfolder = f'{tname}.tbl'
         pfolder = f'{tfolder}\\{pid}.prt'
         tf_id = self.folder(ts_id, 18, tfolder)
@@ -585,6 +590,8 @@ class Builder:
             self.db.ins('Expression', 'Expression', ID=eid, Name=e['name'], Description=_text(e.get('description')),
                         Kind=kinds.get(e.get('kind', 'm'), 0), Expression=_text(e.get('expression')),
                         LineageTag=e.get('lineageTag', ''), ModifiedTime=self.db.now)
+            if e.get('queryGroup') in self.qgroups:
+                self.db.set('Expression', eid, QueryGroupID=self.qgroups[e['queryGroup']])
             self.annotations(e, eid, 'expression')
 
     def roles(self):
@@ -655,6 +662,10 @@ class Builder:
                DiscourageImplicitMeasures=1 if m.get('discourageImplicitMeasures') else 0,
                SourceQueryCulture=m.get('sourceQueryCulture', ''))
         self.annotations(m, 1, 'model')
+        for g in m.get('queryGroups', []):
+            gid = db.id()
+            db.ins('QueryGroup', 'QueryGroup', ID=gid, Folder=g['folder'], Description=_text(g.get('description')))
+            self.qgroups[g['folder']] = gid
         infos = [self.table(t) for t in m.get('tables', [])]
         for info in infos:
             self.finish_table(info)

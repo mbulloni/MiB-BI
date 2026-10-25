@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { globalOptions } from './options';
 import { api, type UpdateInfo } from './api';
-import type { Bookmark, CrossFilter, DbConnection, FieldRef, Filter, Interaction, NewStep, Page, PQType, Relationship, Report, Step, Theme, TableMeta, View, Visual, VisualFormat, VisualType } from './types';
+import type { Bookmark, CrossFilter, DbConnection, FieldRef, Filter, Interaction, NewStep, Page, PQParam, PQType, Relationship, Report, Step, Theme, TableMeta, View, Visual, VisualFormat, VisualType } from './types';
 import { interactionKey } from './visuals/interactions';
 import { propagateSync } from './visuals/sync';
 import { refLabel, isNumeric, setCaptions, uid } from './format';
@@ -16,10 +16,11 @@ import { runVisualQuery } from './visuals/useVisualData';
 import { cfInput, fieldKey, rangeOf } from './visuals/condfmt';
 import { sp } from './visuals/pbistyle';
 import { pbirToLayout } from './pbix/pbir';
-import { buildPbipParts, buildPbitParts, buildPbixParts } from './pbix/pbit';
+import { buildPbipParts, buildPbitParts, buildPbixParts, queryM } from './pbix/pbit';
 import { pendingQueries } from './visuals/useVisualData';
 import { applyTheme, parseTheme, themeJson, THEMES } from './themes';
-import { compileQuery } from './pq/compile';
+import { compileQuery, type CompileOptions } from './pq/compile';
+import { evaluateM, mTempTable, clearMTemp, type MQuerySource } from './pq/m/host';
 import { dependencies, renameQueryRef, type QueryDef } from './pq/steps';
 
 export const PAGE_W = 1280;
@@ -79,11 +80,31 @@ export async function isUnique(table: string, column: string): Promise<boolean> 
 export type FilterScope = 'visual' | 'page' | 'report';
 
 /** Query being edited in the Power Query editor; `orig` is the model table it came from (null = new). */
-export interface PQQuery { name: string; orig: string | null; source: TableMeta['source']; steps: Step[]; }
+/** `load` false = connection-only query (Abilita caricamento off: functions, helper queries), kept in Report.pqQueries. */
+export interface PQQuery { name: string; orig: string | null; source: TableMeta['source']; steps: Step[]; load?: boolean; }
 /** `step` = number of applied steps shown (null = all, 0 = Origine). */
-export interface PQState { queries: PQQuery[]; selected: string; step: number | null; deleted: string[]; }
+/** `groups`: query name → group path (Gruppi di query). */
+export interface PQState { queries: PQQuery[]; selected: string; step: number | null; deleted: string[]; groups?: Record<string, string>; }
 
 const srcExpr = (source: TableMeta['source']) => api.sourceExpr(resolveSource(source));
+
+/** What the M interpreter can reach: M queries (loaded or connection-only), the SQL of the other queries, parameters. */
+export function mSourceOf(defs: QueryDef[], extra: { name: string; code: string }[], params: PQParam[]): MQuerySource {
+  const code = new Map<string, string>(extra.map((q) => [q.name, q.code]));
+  const sql = new Map<string, () => Promise<string>>();
+  const tables = new Set<string>();
+  for (const d of defs) {
+    if (d.source.mcode !== undefined) code.set(d.name, d.source.mcode);
+    else if (d.source.dax) tables.add(d.name);
+    else sql.set(d.name, () => compileQuery(d, defs, compileOpts(defs, extra, params)));
+  }
+  const src: MQuerySource = { code, sql, tables, params };
+  return src;
+}
+/** Compile options: SQL queries that reference M queries read them from a DuckDB table filled by the interpreter. */
+export function compileOpts(defs: QueryDef[], extra: { name: string; code: string }[], params: PQParam[]): CompileOptions {
+  return { srcExpr, mTable: (_name, code) => mTempTable(code, mSourceOf(defs, extra, params)) };
+}
 
 /** Steps Power BI folds into the previous step of the same kind instead of adding a new one. */
 /** The page holds an "Applica tutti i filtri dei dati" button: slicer changes wait for it. */
@@ -509,13 +530,24 @@ export const useStore = create<State>((set, get) => {
 
   /** Runs a query (source + applied steps) and stores the result as model table `def.name`.
    *  `context` resolves references to other queries (defaults to the loaded tables). */
-  const loadTable = async (def: QueryDef & { sortBy?: Record<string, string>; dataCategory?: Record<string, string>; calcColumns?: TableMeta['calcColumns'] }, context?: QueryDef[]) => {
+  const loadTable = async (def: QueryDef & { sortBy?: Record<string, string>; dataCategory?: Record<string, string>; calcColumns?: TableMeta['calcColumns'] }, context?: QueryDef[], extraM?: { name: string; code: string }[]) => {
     const all = context ?? get().tables;
-    const meta = await api.materialize(def.name, await compileQuery(def, all, { srcExpr }));
+    const extra = extraM ?? get().report.pqQueries ?? [];
+    const params = get().report.pqParams ?? [];
+    const opts = compileOpts(all, extra, params);
+    let meta: Awaited<ReturnType<typeof api.materialize>>;
+    if (def.source.mcode !== undefined) {
+      // M query: evaluated by the interpreter, loaded as typed rows.
+      const r = await evaluateM(def.source.mcode, mSourceOf(all, extra, params));
+      if (r.kind === 'function') throw new Error('la query restituisce una funzione: disattivare Abilita caricamento (query solo connessione).');
+      meta = await api.m.load(def.name, r.columns, r.rows);
+      const errs = r.errors.reduce((a, b) => a + b, 0);
+      if (errs) get().notify(`${def.name}: ${errs} ${errs === 1 ? 'valore con errore caricato' : 'valori con errore caricati'} come vuoti (${r.errorText.find((x) => x) ?? ''}).`, 9000);
+    } else meta = await api.materialize(def.name, await compileQuery(def, all, opts));
     const steps = def.steps?.length ? def.steps : undefined;
     let sourceColumns: TableMeta['sourceColumns'];
     if (steps) {
-      const d = await api.query(`DESCRIBE SELECT * FROM (${await compileQuery({ ...def, steps: [] }, all, { srcExpr })})`);
+      const d = await api.query(`DESCRIBE SELECT * FROM (${await compileQuery({ ...def, steps: [] }, all, opts)})`);
       sourceColumns = d.rows.map((r) => ({ name: r.column_name, type: r.column_type }));
     }
     const prev = get().tables.find((x) => x.name === def.name);
@@ -673,6 +705,9 @@ export const useStore = create<State>((set, get) => {
         const pqParams = (model.parameters ?? []).map((p) => paramFromM(p.name, p.expression, p.description));
         const mx = model.model;
         const calcNames = new Set((mx?.calcGroups ?? []).map((g) => g.table));
+        // The M of every query, reachable by name from the others while the interpreter evaluates them.
+        const allM = [...model.tables.filter((x) => x.m && !x.dax).map((x) => ({ name: x.name, code: x.m! })), ...(mx?.queries ?? [])];
+        if (pqParams.length) set((s) => ({ report: { ...s.report, pqParams } }));
         for (const t of model.tables) {
           // Calculation group tables are rebuilt from their items (syncCalcTables).
           if (calcNames.has(t.name)) continue;
@@ -683,12 +718,14 @@ export const useStore = create<State>((set, get) => {
               continue;
             }
             if (t.parquet) { await importTable(t.parquet, t.name, undefined, t.m ?? undefined); continue; }
-            // .pbit: no data inside; try the local file the Power Query points at (parameters inlined), else empty typed table.
+            // .pbit/.pbip: no data inside. The query's M runs on the interpreter (every step applied); if its sources
+            // are not reachable, the local file it points at (parameters inlined), else an empty typed table.
             const mText = inlineParamsInM(t.m ?? '', pqParams);
             const src = /File\.Contents\("([^"]+)"\)/.exec(mText)?.[1];
             const sheet = /Item="([^"]+)",Kind="Sheet"/.exec(mText)?.[1];
             let ok = false;
-            if (src) { try { await importTable(src, t.name, sheet, t.m ?? undefined); ok = true; } catch { /* fall through */ } }
+            if (t.m) { try { await loadTable({ name: t.name, source: { path: '', mcode: t.m } }, [], allM); ok = true; } catch { /* fall through */ } }
+            if (!ok && src) { try { await importTable(src, t.name, sheet, t.m ?? undefined); ok = true; } catch { /* fall through */ } }
             // Data typed in the M itself (Immetti dati): loaded as an inline table.
             const inline = !ok && t.m ? await inlineFromM(t.m) : null;
             if (inline) {
@@ -751,6 +788,8 @@ export const useStore = create<State>((set, get) => {
         if (cals.length) extrasReport.calendars = cals;
         const cultures = (mx?.cultures ?? []).filter((c) => Object.keys(c.captions ?? {}).length || Object.keys(c.descriptions ?? {}).length || Object.keys(c.folders ?? {}).length);
         if (cultures.length) extrasReport.cultures = cultures;
+        if (mx?.queries?.length) extrasReport.pqQueries = mx.queries.map((q) => ({ name: q.name, code: q.code }));
+        if (mx?.groups && Object.keys(mx.groups).length) extrasReport.pqGroups = mx.groups;
         if (extrasReport.calcGroups) {
           set({ report: { ...get().report, calcGroups: extrasReport.calcGroups } });
           await get().syncCalcTables();
@@ -1282,10 +1321,12 @@ export const useStore = create<State>((set, get) => {
 
     openPowerQuery: (focus, extra) => {
       const queries: PQQuery[] = get().tables.filter((t) => !t.source.dax).map((t) => ({ name: t.name, orig: t.name, source: clone(t.source), steps: clone(t.steps ?? []) }));
+      // Connection-only queries (functions, helpers) are edited like the others.
+      for (const q of get().report.pqQueries ?? []) queries.push({ name: q.name, orig: q.name, source: { path: '', mcode: q.code }, steps: [], load: false });
       const extras = extra ? (Array.isArray(extra) ? extra : [extra]) : [];
       queries.push(...extras);
       const selected = extras[0]?.name ?? focus ?? queries[0]?.name ?? '';
-      set({ pq: { queries, selected, step: null, deleted: [] }, fileMenu: false });
+      set({ pq: { queries, selected, step: null, deleted: [], groups: { ...(get().report.pqGroups ?? {}) } }, fileMenu: false });
     },
     pqSet: (fn) => {
       const pq = get().pq;
@@ -1374,22 +1415,30 @@ export const useStore = create<State>((set, get) => {
       if (!pq) return;
       set({ busy: 'Applicazione delle modifiche alle query…' });
       const failed: string[] = [];
+      clearMTemp();
       try {
-        for (const name of pq.deleted) await get().removeTable(name);
+        // Connection-only queries: stored as M code in the report, never loaded (a loaded query switched off is removed).
+        const connOnly = pq.queries.filter((q) => q.load === false);
+        const connM = connOnly.map((q) => ({ name: q.name, code: q.source.mcode ?? queryM({ source: q.source, steps: q.steps }, get().tables.find((t) => t.name === q.orig)?.sourceColumns ?? []) }));
+        const wasLoaded = connOnly.filter((q) => q.orig && get().tables.some((t) => t.name === q.orig)).map((q) => q.orig!);
+        const groups = Object.fromEntries(Object.entries(pq.groups ?? {}).filter(([n, g]) => g && pq.queries.some((q) => q.name === n)));
+        get().mut((r) => { if (connM.length) r.pqQueries = connM; else delete r.pqQueries; if (Object.keys(groups).length) r.pqGroups = groups; else delete r.pqGroups; });
+        for (const name of [...pq.deleted.filter((n) => get().tables.some((t) => t.name === n)), ...wasLoaded]) await get().removeTable(name);
+        const loadable = pq.queries.filter((q) => q.load !== false);
         const before = get().tables;
         const key = (q: QueryDef) => JSON.stringify([q.source, q.steps ?? []]);
-        const changed = new Set(pq.queries.filter((q) => {
+        const changed = new Set(loadable.filter((q) => {
           const t = before.find((x) => x.name === q.orig);
           return !t || q.orig !== q.name || key(t) !== key(q);
         }).map((q) => q.name));
         // References are inlined in the SQL, so dependents of a changed query reload too.
         for (let grew = true; grew;) {
           grew = false;
-          for (const q of pq.queries) {
+          for (const q of loadable) {
             if (!changed.has(q.name) && dependencies(q).some((d) => changed.has(d))) { changed.add(q.name); grew = true; }
           }
         }
-        for (const q of pq.queries) {
+        for (const q of loadable) {
           if (!q.orig || q.orig === q.name) continue;
           await api.dropTable(q.orig);
           const from = q.orig;
@@ -1399,11 +1448,13 @@ export const useStore = create<State>((set, get) => {
             dataViewTable: s.dataViewTable === from ? q.name : s.dataViewTable,
           }));
         }
-        for (const q of pq.queries) {
+        // M queries reach connection-only queries by name, so a change there reloads the M queries that use them.
+        for (const q of loadable) if (q.source.mcode !== undefined && dependencies(q).some((d) => connOnly.some((c) => c.name === d))) changed.add(q.name);
+        for (const q of loadable) {
           if (!changed.has(q.name)) continue;
-          try { await loadTable({ name: q.name, source: q.source, steps: q.steps }, pq.queries); } catch (e: any) { failed.push(`${q.name}: ${e.message}`); }
+          try { await loadTable({ name: q.name, source: q.source, steps: q.steps }, loadable, connM); } catch (e: any) { failed.push(`${q.name}: ${e.message}`); }
         }
-        const order = pq.queries.map((q) => q.name);
+        const order = loadable.map((q) => q.name);
         const pos = (n: string) => (order.includes(n) ? order.indexOf(n) : order.length);
         set((s) => ({ tables: [...s.tables].sort((a, b) => pos(a.name) - pos(b.name)), dataVersion: s.dataVersion + 1 }));
         await get().finalizeModel();

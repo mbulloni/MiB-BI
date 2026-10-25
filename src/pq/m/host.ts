@@ -13,8 +13,10 @@ import { toText } from './lib/text';
 export interface MQuerySource {
   /** Queries defined by M code (engine queries, functions, connection-only queries). */
   code: Map<string, string>;
-  /** Model tables that are loaded in DuckDB (queries compiled to SQL, imported tables). */
+  /** Model tables that are loaded in DuckDB (calculated tables…). */
   tables: Set<string>;
+  /** Queries compiled to SQL (applied steps): SELECT text, computed on first use. */
+  sql?: Map<string, () => Promise<string>>;
   params: PQParam[];
 }
 
@@ -38,6 +40,8 @@ function resolver(src: MQuerySource) {
       const a = ast;
       return new Lazy(() => evaluate(a, new Env(new Map(), null, host)));
     }
+    const sql = src.sql?.get(name);
+    if (sql) return new Lazy(() => sqlTable(host.request('pqsql:' + name, sql)));
     if (src.tables.has(name)) return new Lazy(() => sqlTable(`SELECT * FROM "${name.replace(/"/g, '""')}"`));
     return undefined;
   };
@@ -131,3 +135,23 @@ export async function runQuery(name: string, src: MQuerySource, cache?: Map<stri
   if (code === undefined) throw new MError('Expression.Error', `Query '${name}' non trovata.`);
   return evaluateM(code, src, cache);
 }
+
+/** M query results materialized in DuckDB for SQL queries that reference them (preview in the editor). */
+const temp = new Map<string, Promise<string>>();
+export function mTempTable(code: string, src: MQuerySource): Promise<string> {
+  let p = temp.get(code);
+  if (!p) {
+    p = (async () => {
+      const r = await evaluateM(code, src);
+      if (r.kind === 'function') throw new MError('Expression.Error', 'La query restituisce una funzione, non una tabella.');
+      const name = '__m_' + Math.abs([...code].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7)).toString(36);
+      const { api } = await import('../../api');
+      await api.m.load(name, r.columns, r.rows);
+      return `"${name}"`;
+    })();
+    p.catch(() => temp.delete(code));
+    temp.set(code, p);
+  }
+  return p;
+}
+export const clearMTemp = () => temp.clear();

@@ -6,9 +6,10 @@ import { compileQuery, parseNumber, qi } from '../pq/compile';
 import { mToSql, referencedColumns, SUPPORTED_FUNCTIONS } from '../pq/mexpr';
 import { pqTypeOf } from '../pq/steps';
 import { resolveSource } from '../pq/params';
-import { useStore } from '../store';
+import { compileOpts, useStore } from '../store';
 import { Icon } from './icons';
 import { locale } from '../format';
+import { mName, mStr } from '../pq/m';
 
 export type DialogState =
   | { kind: 'choose' }
@@ -25,7 +26,8 @@ export type DialogState =
   | { kind: 'conditional' }
   | { kind: 'pivot'; col: string };
 
-export interface Preview { columns: ColumnMeta[]; rows: Record<string, any>[]; sql: string; at: Date; upto?: number; query?: string; }
+/** `errors`: cells with an M error per column (M queries), shown in Qualità colonna. */
+export interface Preview { columns: ColumnMeta[]; rows: Record<string, any>[]; sql: string; at: Date; upto?: number | null; query?: string; errors?: Record<string, number>; total?: number; }
 
 
 export const vtypeOf = (c?: ColumnMeta): ValueType => {
@@ -83,6 +85,8 @@ interface Props {
   init?: Step;
   /** Advanced editor: parse and apply M (returns an error message, or null). */
   saveM?: (m: string) => Promise<string | null>;
+  /** Appends a step written in M (operations only the M interpreter runs, e.g. fuzzy merge). */
+  addM?: (label: string, expr: (prev: string) => string) => void;
 }
 type Init<K extends Step['kind']> = Extract<Step, { kind: K }> | undefined;
 const initOf = <K extends Step['kind']>(p: Props, ...kinds: K[]): Init<K> => (p.init && (kinds as string[]).includes(p.init.kind) ? (p.init as Init<K>) : undefined);
@@ -335,7 +339,9 @@ function useQueryPreview(pq: PQState, name: string) {
     let dead = false;
     (async () => {
       try {
-        const sql = await compileQuery(q, pq.queries, { srcExpr });
+        const defs = pq.queries.filter((x) => x.load !== false);
+        const extra = pq.queries.filter((x) => x.load === false && x.source.mcode !== undefined).map((x) => ({ name: x.name, code: x.source.mcode! }));
+        const sql = await compileQuery(q, defs, compileOpts(defs, extra, useStore.getState().report.pqParams ?? []));
         const r = await api.query(`SELECT * FROM (${sql}) LIMIT 5`);
         const d = await api.query(`DESCRIBE SELECT * FROM (${sql})`);
         if (!dead) setRes({ columns: d.rows.map((x) => x.column_name), rows: r.rows, sql });
@@ -358,6 +364,8 @@ function Merge(p: Props) {
   const [join, setJoin] = useState<JoinKind>(init?.join ?? 'left');
   const [expand, setExpand] = useState<Set<string> | null>(init ? new Set(init.expand) : null);
   const [stats, setStats] = useState<string>('');
+  const [fuzzy, setFuzzy] = useState(false);
+  const [fz, setFz] = useState({ threshold: 0.8, ignoreCase: true, ignoreSpace: true, matches: '' });
   const { res, err } = useQueryPreview(pq, other);
   const [firstOther] = useState(other);
   useEffect(() => { if (other !== firstOther || !init) { setRk(undefined); setExpand(null); } }, [other]);
@@ -375,7 +383,17 @@ function Merge(p: Props) {
   return (
     <Shell title="Unisci" sub="Selezionare una tabella e le colonne corrispondenti per creare una tabella unita." width={860} onClose={close}
       okDisabled={!lk || !rk || !res || (join !== 'leftAnti' && !exp.size)}
-      onOk={() => { add({ kind: 'merge', table: other, left: [lk!], right: [rk!], join, expand: res!.columns.filter((c) => exp.has(c)) }); close(); }}>
+      onOk={() => {
+        const cols = res!.columns.filter((c) => exp.has(c));
+        if (fuzzy && p.addM) {
+          // Fuzzy merge runs on the M interpreter: Table.FuzzyNestedJoin + expand.
+          const kind = { left: 'LeftOuter', right: 'RightOuter', full: 'FullOuter', inner: 'Inner', leftAnti: 'LeftAnti' }[join];
+          const o = `[Threshold=${fz.threshold}, IgnoreCase=${fz.ignoreCase}, IgnoreSpace=${fz.ignoreSpace}${fz.matches ? `, NumberOfMatches=${Number(fz.matches)}` : ''}]`;
+          const nested = (prev: string) => `Table.FuzzyNestedJoin(${prev}, {${mStr(lk!)}}, ${mName(other)}, {${mStr(rk!)}}, ${mStr(other)}, JoinKind.${kind}, ${o})`;
+          p.addM('Query unite', (prev) => (join === 'leftAnti' ? nested(prev) : `Table.ExpandTableColumn(${nested(prev)}, ${mStr(other)}, {${cols.map(mStr).join(', ')}}, {${cols.map((c) => mStr(`${other}.${c}`)).join(', ')}})`));
+        } else add({ kind: 'merge', table: other, left: [lk!], right: [rk!], join, expand: cols });
+        close();
+      }}>
       <div className="pq-label">{pq.selected}</div>
       <MiniGrid columns={preview?.columns.map((c) => c.name) ?? []} rows={preview?.rows ?? []} keyCol={lk} onKey={setLk} />
       <select value={other} onChange={(e) => setOther(e.target.value)} style={{ marginTop: 10 }}>{others.map((o) => <option key={o}>{o}</option>)}</select>
@@ -392,7 +410,16 @@ function Merge(p: Props) {
           ))}</div>
         </>
       )}
-      <div className="pq-note">{!lk || !rk ? 'Fare clic sull\'intestazione della colonna chiave in entrambe le tabelle.' : stats}</div>
+      <label className="rcheck" style={{ marginTop: 8 }}><input type="checkbox" checked={fuzzy} disabled={!p.addM} onChange={(e) => setFuzzy(e.target.checked)} />Usa corrispondenza fuzzy per eseguire l'unione</label>
+      {fuzzy && (
+        <div className="pq-row pq-fuzzy">
+          <label className="pq-field">Soglia di somiglianza (0–1)<input type="number" min={0} max={1} step={0.05} value={fz.threshold} onChange={(e) => setFz({ ...fz, threshold: Number(e.target.value) })} /></label>
+          <label className="pq-field">Numero massimo di corrispondenze<input type="number" min={1} value={fz.matches} placeholder="tutte" onChange={(e) => setFz({ ...fz, matches: e.target.value })} /></label>
+          <label className="rcheck"><input type="checkbox" checked={fz.ignoreCase} onChange={(e) => setFz({ ...fz, ignoreCase: e.target.checked })} />Ignora maiuscole/minuscole</label>
+          <label className="rcheck"><input type="checkbox" checked={fz.ignoreSpace} onChange={(e) => setFz({ ...fz, ignoreSpace: e.target.checked })} />Combina parti di testo (ignora spazi)</label>
+        </div>
+      )}
+      <div className="pq-note">{!lk || !rk ? 'Fare clic sull\'intestazione della colonna chiave in entrambe le tabelle.' : fuzzy ? 'Corrispondenza fuzzy (somiglianza di Jaccard): la query diventa codice M eseguito dall\'interprete.' : stats}</div>
     </Shell>
   );
 }

@@ -80,7 +80,7 @@ function sourceM(t: Pick<TableMeta, 'source'>, columns: ColumnMeta[]): string {
   const p = t.source.path;
   const types = `{${columns.map((c) => `{${mStr(c.name)}, ${tomType(c.type).m}}`).join(', ')}}`;
   const typed = (prev: string) => columns.length
-    ? `    #"Modificato tipo" = Table.TransformColumnTypes(${prev}, ${types})\nin\n    #"Modificato tipo"`
+    ? `    #"Modificato tipo" = Table.TransformColumnTypes(${prev}, ${types}, "en-US")\nin\n    #"Modificato tipo"`
     : `    Fine = ${prev}\nin\n    Fine`;
   if (t.source.inline) {
     const { columns: cs, rows } = t.source.inline;
@@ -133,6 +133,8 @@ function sourceM(t: Pick<TableMeta, 'source'>, columns: ColumnMeta[]): string {
 
 /** Full M of a query: source followed by its applied steps (Editor avanzato, .pbit partitions). */
 export function queryM(t: Pick<TableMeta, 'source' | 'steps'>, sourceColumns: ColumnMeta[]): string {
+  // M queries keep their own code.
+  if (t.source.mcode !== undefined) return t.source.mcode;
   return appendSteps(sourceM(t, sourceColumns), t.steps ?? []);
 }
 
@@ -271,6 +273,7 @@ export function buildModelSchema(report: Report, tables: TableMeta[], autoDates 
         }),
         partitions: [{
           name: `${t.name}-${crypto.randomUUID().slice(0, 8)}`, mode: 'import',
+          ...(report.pqGroups?.[t.name] && !t.source.dax ? { queryGroup: report.pqGroups[t.name] } : {}),
           source: t.source.dax ? { type: 'calculated', expression: t.source.dax.split('\n') } : { type: 'm', expression: mExpression(t).split('\n') },
         }],
         measures: measuresOf(t.name),
@@ -286,14 +289,20 @@ export function buildModelSchema(report: Report, tables: TableMeta[], autoDates 
         annotations: [{ name: 'PBI_ResultType', value: 'Table' }],
       })) as any[]).concat(dates.length ? [dateTable(`DateTableTemplate_${crypto.randomUUID()}`, 'Calendar(Date(2015,1,1), Date(2015,1,1))', false)] : [])
         .concat(dates.map((d) => dateTable(d.local, `Calendar(Date(Year(MIN(${daxTable(d.table)}${daxCol(d.column)})), 1, 1), Date(Year(MAX(${daxTable(d.table)}${daxCol(d.column)})), 12, 31))`, true))),
-      // Power Query parameters: shared M expressions flagged as parameter queries.
-      ...(report.pqParams?.length ? {
-        expressions: report.pqParams.map((p) => {
+      // Gruppi di query (folders of the queries pane).
+      ...(Object.keys(report.pqGroups ?? {}).length ? { queryGroups: [...new Set(Object.values(report.pqGroups!))].map((folder) => ({ folder })) } : {}),
+      // Power Query parameters (shared M expressions flagged as parameter queries) and connection-only queries.
+      ...(report.pqParams?.length || report.pqQueries?.length ? {
+        expressions: [...(report.pqQueries ?? []).map((q) => ({
+          name: q.name, kind: 'm', expression: q.code.split('\n'), lineageTag: crypto.randomUUID(),
+          ...(report.pqGroups?.[q.name] ? { queryGroup: report.pqGroups[q.name] } : {}),
+          annotations: [{ name: 'PBI_ResultType', value: /^\s*\(/.test(q.code) ? 'Function' : 'Table' }],
+        })), ...(report.pqParams ?? []).map((p) => {
           const d = /^(\d{4})-(\d{2})-(\d{2})/.exec(p.value);
           const lit = p.type === 'number' ? (Number.isFinite(Number(p.value)) ? String(Number(p.value)) : '0') : p.type === 'date' && d ? `#date(${+d[1]}, ${+d[2]}, ${+d[3]})` : mStr(p.value);
           const type = p.type === 'number' ? 'Number' : p.type === 'date' ? 'Date' : 'Text';
           return { name: p.name, kind: 'm', expression: `${lit} meta [IsParameterQuery=true, Type="${type}", IsParameterQueryRequired=true]`, lineageTag: crypto.randomUUID(), ...(p.description ? { description: p.description } : {}) };
-        }),
+        })],
       } : {}),
       relationships: report.relationships.map((r) => ({
         name: crypto.randomUUID(),

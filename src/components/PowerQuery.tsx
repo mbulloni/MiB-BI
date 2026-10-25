@@ -1,13 +1,18 @@
 import { useEffect, useMemo, useState, type MouseEvent as RMouseEvent } from 'react';
 import { api } from '../api';
-import { useStore, type PQState } from '../store';
+import { compileOpts, mSourceOf, useStore, type PQQuery, type PQState } from '../store';
 import type { ColumnMeta, DbSource, FilterOp, NewStep, PQType, Step, TransformFn } from '../types';
 import { compileQuery, qi } from '../pq/compile';
 import { dependencies, pqTypeOf, renameQueryRef, stepNames, TYPE_LABEL } from '../pq/steps';
 import { exprToStep, mToQuery } from '../pq/mparse';
 import { learn } from '../pq/examples';
 import { DataSourceSettings, ParamsDialog } from './SourceDialogs';
-import { stepM } from '../pq/m';
+import { appendSteps, mName, stepM } from '../pq/m';
+import { evaluateM } from '../pq/m/host';
+import { parseM } from '../pq/m/parse';
+import { appendStep, codeUpTo, deleteStep as deleteMStep, mSteps, replaceStep, stepExpr } from '../pq/m/edit';
+import { MFunction } from '../pq/m/values';
+import { DependencyView, GroupPrompt, InvokePanel, groupedQueries } from './PowerQueryM';
 import { queryM } from '../pbix/pbit';
 import { Icon } from './icons';
 import { Menu } from './Menu';
@@ -57,8 +62,16 @@ function Editor() {
   const pq = s.pq!;
   const q = pq.queries.find((x) => x.name === pq.selected) ?? pq.queries[0];
   const [dbEdit, setDbEdit] = useState(false);
-  const upto = q ? pq.step ?? q.steps.length : 0;
+  // M queries (evaluated by the interpreter): the applied steps are the bindings of the let.
+  const isM = q?.source.mcode !== undefined;
+  const mInfo = useMemo(() => (isM ? mSteps(q!.source.mcode!) : null), [isM, q?.source.mcode]);
+  const upto = q ? (isM ? pq.step ?? mInfo!.steps.length - 1 : pq.step ?? q.steps.length) : 0;
   const names = useMemo(() => stepNames(q?.steps ?? []), [q?.steps]);
+  /** What the interpreter can reach from the editor (unsaved queries included). */
+  const editorDefs = () => pq.queries.filter((x) => x.load !== false);
+  const editorExtra = () => pq.queries.filter((x) => x.load === false).map((x) => ({ name: x.name, code: x.source.mcode ?? queryM({ source: x.source, steps: x.steps }, []) }));
+  const mSrc = () => mSourceOf(editorDefs(), editorExtra(), s.report.pqParams ?? []);
+  const [fnValue, setFnValue] = useState<MFunction | null>(null);
 
   const [tab, setTab] = useState<Tab>('home');
   const [sel, setSel] = useState<string[]>([]);
@@ -81,14 +94,28 @@ function Editor() {
     setLoading(true);
     (async () => {
       try {
-        const sql = await compileQuery(q, pq.queries, { upto, srcExpr });
+        let sql: string, errors: Record<string, number> | undefined;
+        if (isM) {
+          // The interpreter evaluates the query up to the selected step; the result goes to a scratch DuckDB table
+          // so filters, profiles and distinct values work as for SQL queries.
+          const r = await evaluateM(codeUpTo(q.source.mcode!, pq.step), mSrc());
+          if (dead) return;
+          if (r.kind === 'function') { setFnValue(r.value as MFunction); setPreview(null); setError(null); return; }
+          setFnValue(null);
+          await api.m.load('__pq_preview', r.columns, r.rows);
+          errors = Object.fromEntries(r.columns.map((c, i) => [c.name, r.errors[i]]).filter(([, n]) => n));
+          sql = 'SELECT * FROM "__pq_preview"';
+        } else {
+          setFnValue(null);
+          sql = await compileQuery(q, editorDefs(), { ...compileOpts(editorDefs(), editorExtra(), s.report.pqParams ?? []), upto });
+        }
         const d = await api.query(`DESCRIBE SELECT * FROM (${sql})`);
         const r = await api.query(`SELECT * FROM (${sql}) LIMIT 1000`);
         if (dead) return;
-        setPreview({ columns: d.rows.map((x) => ({ name: x.column_name, type: x.column_type })), rows: r.rows, sql, at: new Date(), upto, query: q.name });
+        setPreview({ columns: d.rows.map((x) => ({ name: x.column_name, type: x.column_type })), rows: r.rows, sql, at: new Date(), upto: isM ? pq.step : upto, query: q.name, errors });
         setError(null);
       } catch (e: any) {
-        if (!dead) setError(friendlyError(e.message));
+        if (!dead) setError(e?.reason ? `${e.reason}: ${e.message}` : friendlyError(e.message));
       } finally {
         if (!dead) setLoading(false);
       }
@@ -102,7 +129,8 @@ function Editor() {
   const quality = useMemo(() => {
     const rows = preview?.rows ?? [];
     return new Map(cols.map((c) => {
-      const empty = rows.filter((r) => r[c.name] === null || r[c.name] === '').length;
+      const errs = preview?.errors?.[c.name] ?? 0;
+      const empty = Math.max(0, rows.filter((r) => r[c.name] === null || r[c.name] === '').length - errs);
       return [c.name, rows.length ? empty / rows.length : 0];
     }));
   }, [preview]);
@@ -131,7 +159,7 @@ function Editor() {
     const sorted = [...nonNull].map(String).sort((a, b) => (numeric ? Number(a) - Number(b) : a.localeCompare(b, 'it')));
     return {
       rows: [
-        ['Conteggio', vals.length], ['Errore', 0], ['Vuoto', vals.filter((v) => v === '').length], ['Null', vals.filter((v) => v === null).length],
+        ['Conteggio', vals.length], ['Errore', preview?.errors?.[profileCol.name] ?? 0], ['Vuoto', vals.filter((v) => v === '').length], ['Null', vals.filter((v) => v === null).length],
         ['Distinti', d?.distinct ?? 0], ['Univoci', d?.unique ?? 0],
         ...(numeric ? [['Min', Math.min(...nums)], ['Max', Math.max(...nums)], ['Media', avg], ['Deviazione standard', sd], ['Zero', nums.filter((x) => x === 0).length]]
           : [['Min', sorted[0] ?? ''], ['Max', sorted[sorted.length - 1] ?? '']]),
@@ -143,7 +171,21 @@ function Editor() {
   // ---- step helpers -------------------------------------------------------
   // Editing an applied step: the preview shows the step's input, OK replaces the step (same id).
   const [editing, setEditing] = useState<{ index: number; dialog: DialogState; back: number | null } | null>(null);
+  /** Replaces the M code of the selected query. */
+  const setCode = (code: string, step: number | null = null) => s.pqSet((x) => { const qq = x.queries.find((y) => y.name === x.selected)!; qq.source = { path: '', mcode: code }; qq.steps = []; x.step = step; });
+  /** The selected query as M code (a SQL query is converted: its applied steps become M). */
+  const asM = () => (isM ? q!.source.mcode! : fullM());
+  /** Appends a step written in M (operations only the interpreter runs: fuzzy merge, errors…). */
+  const addM = (label: string, expr: (prev: string) => string) => {
+    if (isM && pq.step !== null && pq.step < mInfo!.steps.length - 1) s.notify('Il passaggio viene aggiunto alla fine della query.');
+    setCode(appendStep(asM(), label, expr));
+  };
   const add = (st: NewStep) => {
+    if (isM && !editing) {
+      if (pq.step !== null && pq.step < mInfo!.steps.length - 1) s.notify('Il passaggio viene aggiunto alla fine della query.');
+      setCode(appendSteps(q!.source.mcode!.trim(), [{ ...st, id: 'm' } as Step]));
+      return;
+    }
     if (!editing) { s.pqAddStep(st); return; }
     const i = editing.index;
     s.pqSet((x) => { const qq = x.queries.find((y) => y.name === x.selected)!; qq.steps[i] = { ...st, id: qq.steps[i].id } as Step; });
@@ -283,8 +325,34 @@ function Editor() {
     });
   };
 
+  // ---- M queries, functions, groups --------------------------------------------
+  const [deps, setDeps] = useState(false);
+  const [groupFor, setGroupFor] = useState<string | null>(null);
+  const newMQuery = (base: string, code: string) => {
+    const n = uniqueQuery(base);
+    s.pqSet((st) => { st.queries.push({ name: n, orig: null, source: { path: '', mcode: code }, steps: [], load: /^\s*\(/.test(code) ? false : undefined }); st.selected = n; st.step = null; });
+  };
+  /** Invoca: a new query calling the function with the typed arguments. */
+  const invokeFunction = (fnName: string, args: string[]) => {
+    newMQuery('Funzione richiamata', `let\n    Origine = ${mName(fnName)}(${args.join(', ')})\nin\n    Origine`);
+  };
+  const toggleLoad = (name: string) => s.pqSet((st) => {
+    const qq = st.queries.find((x) => x.name === name)!;
+    qq.load = qq.load === false ? undefined : false;
+  });
+  const newXml = async () => {
+    const path = await api.openDataDialog('xml');
+    if (!path) return;
+    const base = path.split('/').pop()!.replace(/\.xml$/i, '');
+    newMQuery(base, `let\n    Origine = Xml.Tables(File.Contents(${JSON.stringify(path)}))\nin\n    Origine`);
+  };
+
   // ---- steps ----------------------------------------------------------------
-  const selectStep = (n: number) => s.pqSet((st) => { const len = st.queries.find((x) => x.name === st.selected)!.steps.length; st.step = n >= len ? null : n; });
+  const selectStep = (n: number) => s.pqSet((st) => {
+    const qq = st.queries.find((x) => x.name === st.selected)!;
+    const len = qq.source.mcode !== undefined ? mSteps(qq.source.mcode).steps.length - 1 : qq.steps.length;
+    st.step = n >= len ? null : n;
+  });
   const deleteStep = (i: number) => s.pqSet((st: PQState) => {
     const qq = st.queries.find((x) => x.name === st.selected)!;
     qq.steps.splice(i, 1);
@@ -294,6 +362,7 @@ function Editor() {
 
   const formula = useMemo(() => {
     if (!q) return '';
+    if (isM) return stepExpr(q.source.mcode!, upto);
     if (upto === 0) {
       const m = queryM({ source: q.source, steps: [] }, []);
       return /Origine\s*=\s*([\s\S]*?)(,\n|\nin\n)/.exec(m)?.[1] ?? m;
@@ -307,7 +376,7 @@ function Editor() {
     const t = s.tables.find((x) => x.name === q?.orig);
     return q?.source.m ? [] : t ? (t.steps?.length ? t.sourceColumns ?? [] : t.columns) : [];
   };
-  const fullM = () => queryM({ source: q!.source, steps: q!.steps }, srcColsOf());
+  const fullM = () => (q!.source.mcode !== undefined ? q!.source.mcode : queryM({ source: q!.source, steps: q!.steps }, srcColsOf()));
 
   /** Header names of "Usa la prima riga come intestazione" steps written in M: read from the data. */
   const resolveHeaders = async (steps: NewStep[]): Promise<NewStep[]> => {
@@ -335,9 +404,13 @@ function Editor() {
     x.step = null;
   });
   const saveM = async (text: string): Promise<string | null> => {
+    try { parseM(text); } catch (e: any) { return e.message; }
+    if (isM) { setCode(text); return null; }
     try {
       const base = queryM({ source: q!.source, steps: [] }, srcColsOf());
-      const r = mToQuery(text, base, q!.source);
+      let r: ReturnType<typeof mToQuery>;
+      // Anything the step editor cannot represent runs on the M interpreter.
+      try { r = mToQuery(text, base, q!.source); } catch { setCode(text); s.notify('Query salvata come codice M: viene eseguita dall\'interprete M di MiB-BI.'); return null; }
       // Edited source (path, sheet, URL, server…): the query reloads from it.
       if (JSON.stringify(r.source) !== JSON.stringify(q!.source)) s.pqSet((x) => { x.queries.find((y) => y.name === x.selected)!.source = r.source; });
       replaceSteps(await resolveHeaders(r.steps));
@@ -362,6 +435,10 @@ function Editor() {
   const [fxErr, setFxErr] = useState<string | null>(null);
   useEffect(() => { setFxText(null); setFxErr(null); }, [upto, q?.name]);
   const saveFormula = async () => {
+    if (fxText !== null && q && isM) {
+      try { setCode(replaceStep(q.source.mcode!, upto, fxText.trim().replace(/^=\s*/, '')), pq.step); setFxText(null); setFxErr(null); } catch (e: any) { setFxErr(e.message); }
+      return;
+    }
     if (fxText === null || !q || upto === 0) { setFxText(null); return; }
     try {
       const r = exprToStep(fxText.trim().replace(/^=\s*/, ''));
@@ -377,8 +454,13 @@ function Editor() {
 
   const dirty = useMemo(() => {
     if (pq.deleted.length) return true;
+    // Connection-only queries and groups are compared with what the report holds.
+    const conn = pq.queries.filter((x) => x.load === false);
+    const saved = s.report.pqQueries ?? [];
+    if (conn.length !== saved.length || conn.some((x) => saved.find((y) => y.name === x.name)?.code !== x.source.mcode)) return true;
+    if (JSON.stringify(pq.groups ?? {}) !== JSON.stringify(s.report.pqGroups ?? {})) return true;
     const key = (x: { source: unknown; steps?: Step[] }) => JSON.stringify([x.source, x.steps ?? []]);
-    return pq.queries.length !== s.tables.length - pq.deleted.length || pq.queries.some((x) => {
+    return pq.queries.length - conn.length !== s.tables.filter((t) => !t.source.dax).length || pq.queries.filter((x) => x.load !== false).some((x) => {
       const t = s.tables.find((tt) => tt.name === x.orig);
       return !t || x.name !== x.orig || key(t) !== key(x);
     });
@@ -531,6 +613,9 @@ function Editor() {
             <Group label="Avanzate">
               <Big icon="advancedEditor" label={<>Editor<br />avanzato</>} onClick={() => setDialog({ kind: 'advanced', m: fullM(), name: q!.name })} disabled={noQuery} />
             </Group>
+            <Group label="Dipendenze">
+              <Big icon="relationships" label={<>Dipendenze<br />query</>} onClick={() => setDeps(true)} disabled={noQuery} />
+            </Group>
           </>}
         </div>
       </div>
@@ -543,12 +628,18 @@ function Editor() {
               <span className="pq-param-ic">P</span><span className="nm">{p.name}</span><span className="pq-new">{p.value}</span>
             </div>
           ))}
-          {pq.queries.map((x) => (
-            <div key={x.name} className={'pq-q' + (x.name === q?.name ? ' sel' : '')} onClick={() => selectQuery(x.name)}
-              onContextMenu={(e) => { e.preventDefault(); setMenu({ kind: 'query', query: x.name, x: e.clientX, y: e.clientY }); }}>
-              <Icon name="tableSmall" />
-              <span className="nm">{x.name}</span>
-              {!x.orig && <span className="pq-new" title="Nuova query: verrà caricata con Chiudi e applica">nuova</span>}
+          {groupedQueries(pq).map(([group, list]) => (
+            <div key={group || '\u0000'} className="pq-group">
+              {group && <div className="pq-group-h" title={group}><Icon name="chevronDown" size={10} />{group} [{list.length}]</div>}
+              {list.map((x) => (
+                <div key={x.name} className={'pq-q' + (x.name === q?.name ? ' sel' : '') + (x.load === false ? ' noload' : '') + (group ? ' ingroup' : '')} onClick={() => selectQuery(x.name)}
+                  onContextMenu={(e) => { e.preventDefault(); setMenu({ kind: 'query', query: x.name, x: e.clientX, y: e.clientY }); }}
+                  title={x.load === false ? 'Caricamento disabilitato (query solo connessione)' : undefined}>
+                  {x.source.mcode !== undefined && /^\s*\(/.test(x.source.mcode) ? <span className="pq-fx-ic">fx</span> : <Icon name="tableSmall" />}
+                  <span className="nm">{x.name}</span>
+                  {!x.orig && <span className="pq-new" title="Nuova query: verrà caricata con Chiudi e applica">nuova</span>}
+                </div>
+              ))}
             </div>
           ))}
         </div>
@@ -557,7 +648,7 @@ function Editor() {
           {opts.formula && (
             <div className="formulabar pq-fx">
               <Icon name="close" size={12} /><span style={{ color: 'var(--text3)' }}>✓</span><span className="fx">fx</span>
-              {upto > 0 && q?.steps[upto - 1]?.kind !== 'merge'
+              {isM || (upto > 0 && q?.steps[upto - 1]?.kind !== 'merge')
                 ? <input className="pq-fx-input" spellCheck={false} value={fxText ?? formula} title="Modificare la formula e premere Invio"
                     onChange={(e) => { setFxText(e.target.value); setFxErr(null); }}
                     onKeyDown={(e) => { if (e.key === 'Enter') saveFormula(); if (e.key === 'Escape') { setFxText(null); setFxErr(null); } }} />
@@ -576,6 +667,7 @@ function Editor() {
           )}
           <div className="grid-wrap pq-grid">
             {noQuery && <div className="pq-empty">Nessuna query. Usare <b>Nuova origine</b>.</div>}
+            {fnValue && q && <InvokePanel fn={fnValue} name={q.name} onInvoke={(args) => invokeFunction(q.name, args)} />}
             {error && <div className="pq-error"><Icon name="warning" size={18} /><div><b>{error.split(':')[0]}</b><div>{error.includes(':') ? error.slice(error.indexOf(':') + 1).trim() : ''}</div></div></div>}
             {!error && preview && (
               <table>
@@ -605,9 +697,14 @@ function Editor() {
                           );
                         })()}
                         {opts.quality && (
-                          <div className="pq-quality" title={`Valido ${Math.round((1 - quality.get(c.name)!) * 100)}% · Errore 0% · Vuoto ${Math.round(quality.get(c.name)! * 100)}%`}>
-                            <i style={{ width: `${(1 - quality.get(c.name)!) * 100}%` }} />
-                          </div>
+                          (() => {
+                            const n = preview.rows.length || 1, e = Math.min(1, (preview.errors?.[c.name] ?? 0) / n), q = quality.get(c.name)!;
+                            return (
+                              <div className="pq-quality" title={`Valido ${Math.round((1 - q - e) * 100)}% · Errore ${Math.round(e * 100)}% · Vuoto ${Math.round(q * 100)}%`}>
+                                <i style={{ width: `${(1 - q - e) * 100}%` }} />{e > 0 && <b style={{ width: `${e * 100}%` }} />}
+                              </div>
+                            );
+                          })()
                         )}
                       </th>
                     ))}
@@ -658,7 +755,18 @@ function Editor() {
               onBlur={() => renameQuery(qName)} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
           </label>
           <div className="pq-sec">PASSAGGI APPLICATI</div>
-          {q && (
+          {q && isM && (
+            <div className="pq-steps">
+              {mInfo!.steps.map((st, i) => (
+                <div key={st.name + i} className={'pq-step' + (upto === i ? ' sel' : '') + (upto < i ? ' after' : '')} onClick={() => selectStep(i)}>
+                  {mInfo!.isLet && mInfo!.steps.length > 1 && <button className="pq-del" title="Elimina passaggio" onClick={(e) => { e.stopPropagation(); setCode(deleteMStep(q.source.mcode!, i)); }}><Icon name="close" size={11} /></button>}
+                  <span className="nm" title={stepExpr(q.source.mcode!, i)}>{st.name}</span>
+                </div>
+              ))}
+              <div className="pq-note" style={{ padding: '6px 2px' }}>Query M eseguita dall'interprete di MiB-BI{q.load === false ? ' · solo connessione (non caricata)' : ''}.</div>
+            </div>
+          )}
+          {q && !isM && (
             <div className="pq-steps">
               <div className={'pq-step' + (upto === 0 ? ' sel' : '')} onClick={() => selectStep(0)}>
                 {q.source.db && <button className="pq-gear" title="Modifica origine" onClick={(e) => { e.stopPropagation(); setDbEdit(true); }}>⚙</button>}
@@ -673,7 +781,7 @@ function Editor() {
               ))}
             </div>
           )}
-          {q && pq.step !== null && <div className="pq-note" style={{ padding: '8px 12px' }}>Il nuovo passaggio verrà inserito dopo quello selezionato.</div>}
+          {q && !isM && pq.step !== null && <div className="pq-note" style={{ padding: '8px 12px' }}>Il nuovo passaggio verrà inserito dopo quello selezionato.</div>}
         </div>
       </div>
 
@@ -696,6 +804,10 @@ function Editor() {
           <button onClick={m(() => s.set({ sourceDialog: 'folder' }))}><Icon name="getData" size={18} />Cartella</button>
           <button onClick={m(() => s.set({ sourceDialog: 'sharepoint' }))}><Icon name="getData" size={18} />Cartella SharePoint</button>
           <button onClick={m(() => s.set({ sourceDialog: 'splist' }))}><Icon name="getData" size={18} />Elenco SharePoint Online</button>
+          <button onClick={m(() => newXml())}><Icon name="docs" size={18} />XML</button>
+          <hr />
+          <button onClick={m(() => newMQuery('Query', 'let\n    Origine = ""\nin\n    Origine'))}><Icon name="advancedEditor" size={18} />Query vuota</button>
+          <button onClick={m(() => newMQuery('Funzione', '(valore as number) as number =>\n    let\n        Risultato = valore * 2\n    in\n        Risultato'))}><Icon name="advancedEditor" size={18} />Funzione personalizzata</button>
         </Menu>
       )}
       {menu?.kind === 'removecols' && (
@@ -708,6 +820,7 @@ function Editor() {
         <Menu x={menu.x} y={menu.y} onClose={() => setMenu(null)}>
           <button onClick={m(() => setDialog({ kind: 'rows', step: 'keepTop' }))}>Mantieni prime righe</button>
           <button onClick={m(() => setDialog({ kind: 'rows', step: 'keepBottom' }))}>Mantieni ultime righe</button>
+          <button onClick={m(() => addM('Righe con errori mantenute', (p) => `Table.SelectRowsWithErrors(${p}${T.length ? `, {${T.map((c) => JSON.stringify(c)).join(', ')}}` : ''})`))}>Mantieni errori</button>
         </Menu>
       )}
       {menu?.kind === 'removerows' && (
@@ -716,6 +829,7 @@ function Editor() {
           <button onClick={m(() => setDialog({ kind: 'rows', step: 'removeBottom' }))}>Rimuovi ultime righe</button>
           <button onClick={m(() => act.removeDup(T))}>Rimuovi duplicati</button>
           <button onClick={m(() => { const c = one(T); if (c) add({ kind: 'filterRows', column: c, op: 'notBlank' }); })}>Rimuovi righe vuote (colonna selezionata)</button>
+          <button onClick={m(() => addM('Errori rimossi', (p) => `Table.RemoveRowsWithErrors(${p}${T.length ? `, {${T.map((c) => JSON.stringify(c)).join(', ')}}` : ''})`))}>Rimuovi errori</button>
         </Menu>
       )}
       {(menu?.kind === 'type' || menu?.kind === 'typecol') && (
@@ -795,17 +909,24 @@ function Editor() {
           <button onClick={m(() => duplicateQuery(menu.query!, false))}><Icon name="copy" />Duplica</button>
           <button onClick={m(() => duplicateQuery(menu.query!, true))}>Riferimento</button>
           <hr />
+          <button onClick={m(() => toggleLoad(menu.query!))}>{pq.queries.find((x) => x.name === menu.query)?.load === false ? '☐' : '☑'} Abilita caricamento</button>
+          <button onClick={m(() => setGroupFor(menu.query!))}>Sposta nel gruppo…</button>
+          {pq.groups?.[menu.query!] && <button onClick={m(() => s.pqSet((x) => { delete x.groups![menu.query!]; }))}>Rimuovi dal gruppo</button>}
+          <hr />
           <button onClick={m(() => deleteQuery(menu.query!))}><Icon name="trash" />Elimina</button>
         </Menu>
       )}
 
+      {deps && <DependencyView queries={pq.queries} params={s.report.pqParams ?? []} selected={q?.name} onClose={() => setDeps(false)} />}
+      {groupFor && <GroupPrompt groups={[...new Set(Object.values(pq.groups ?? {}))]} onClose={() => setGroupFor(null)}
+        onOk={(g) => { const n = groupFor; setGroupFor(null); s.pqSet((x) => { x.groups = { ...(x.groups ?? {}) }; if (g.trim()) x.groups[n] = g.trim(); else delete x.groups[n]; }); }} />}
       {paramsOpen && <ParamsDialog onClose={() => { setParamsOpen(false); setReload((x) => x + 1); }} />}
       {dbEdit && q?.source.db && <DbSourceDialog source={q.source.db} onClose={() => setDbEdit(false)} onSave={(db) => {
         s.pqSet((x) => { x.queries.find((y) => y.name === x.selected)!.source = { ...x.queries.find((y) => y.name === x.selected)!.source, db }; });
         setDbEdit(false); api.clearRemoteCache().catch(() => {}); setReload((x) => x + 1);
       }} />}
       {dsOpen && <DataSourceSettings onClose={() => { setDsOpen(false); api.clearRemoteCache().catch(() => {}); setReload((x) => x + 1); }} />}
-      {dialog && <PQDialog dialog={dialog} close={closeDialog} add={add} preview={error ? null : preview} pq={pq} notify={s.notify} init={editing ? q?.steps[editing.index] : undefined} saveM={saveM} />}
+      {dialog && <PQDialog dialog={dialog} close={closeDialog} add={add} preview={error ? null : preview} pq={pq} notify={s.notify} init={editing ? q?.steps[editing.index] : undefined} saveM={saveM} addM={addM} />}
 
       {confirm && (
         <div className="modal-bg pq-modal">

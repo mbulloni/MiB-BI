@@ -391,3 +391,30 @@ export function letSteps(src: string): { steps: { name: string; start: number; e
   void r;
   return { steps, result: src.slice(toks.find((t) => t.t === 'kw' && t.v === 'in' && t.pos >= (steps[steps.length - 1]?.end ?? 0))!.pos + 2).trim() };
 }
+
+/** Identifiers used in M code (regular and #"quoted"), with their positions: query dependencies and renames. */
+export function mIdentifiers(src: string): { name: string; start: number; end: number; quoted: boolean }[] {
+  let toks: Tok[];
+  try { toks = lex(src); } catch { return []; }
+  const out: { name: string; start: number; end: number; quoted: boolean }[] = [];
+  const p = new Parser(toks, src);
+  for (let i = 0; i < toks.length; i++) {
+    const t = toks[i];
+    if (t.t !== 'id' && t.t !== 'qid') continue;
+    // Field names inside [ ] and record keys are not references.
+    const prev = toks[i - 1], next = toks[i + 1];
+    if (prev?.t === 'op' && (prev.v === '[' || prev.v === ',') && next?.t === 'op' && (next.v === ']' || next.v === '=') && insideBrackets(toks, i)) continue;
+    out.push({ name: t.v, start: t.pos, end: t.pos + p.tokLen(t), quoted: t.t === 'qid' });
+  }
+  return out;
+}
+function insideBrackets(toks: Tok[], i: number): boolean {
+  let depth = 0;
+  for (let j = i - 1; j >= 0; j--) {
+    const t = toks[j];
+    if (t.t !== 'op') continue;
+    if (t.v === ']' || t.v === ')' || t.v === '}') depth++;
+    else if (t.v === '[' || t.v === '(' || t.v === '{') { if (depth === 0) return t.v === '['; depth--; }
+  }
+  return false;
+}

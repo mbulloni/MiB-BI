@@ -256,6 +256,16 @@ def model_extras_sqlite(db, out):
         if slot:
             cu[slot][key] = r["V"]
     mx["cultures"].extend(cultures.values())
+    # Connection-only queries (shared M expressions that are not parameters) and query groups.
+    folders = {r["I"]: r["F"] for _, r in q("SELECT ID AS I, Folder AS F FROM [QueryGroup]")}
+    for _, r in q("SELECT Name AS N, Expression AS E, QueryGroupID AS G FROM [Expression] WHERE Kind = 0"):
+        if isinstance(r["E"], str) and not re.search(r"IsParameterQuery\s*=\s*true", r["E"], re.I):
+            mx["queries"].append({"name": r["N"], "code": r["E"]})
+        if folders.get(r["G"]):
+            mx["groups"][r["N"]] = folders[r["G"]]
+    for _, r in q("SELECT t.Name AS T, p.QueryGroupID AS G FROM [Partition] p JOIN [Table] t ON p.TableID = t.ID"):
+        if folders.get(r["G"]):
+            mx["groups"][r["T"]] = folders[r["G"]]
 
 
 # TOM TimeUnit (Calendar column groups); 0 = time-related columns.
@@ -305,6 +315,16 @@ def model_extras_tmsl(model, out):
     for r in model.get("roles", []):
         mx["roles"].append({"name": r["name"], "filters": [{"table": p["name"], "expression": text_of(p.get("filterExpression"))}
                                                           for p in r.get("tablePermissions", []) if text_of(p.get("filterExpression")).strip()]})
+    for e in model.get("expressions", []):
+        code = text_of(e.get("expression"))
+        if e.get("kind", "m") == "m" and not re.search(r"IsParameterQuery\s*=\s*true", code, re.I):
+            mx["queries"].append({"name": e["name"], "code": code})
+        if e.get("queryGroup"):
+            mx["groups"][e["name"]] = e["queryGroup"]
+    for t in model.get("tables", []):
+        for p in t.get("partitions", []):
+            if p.get("queryGroup"):
+                mx["groups"][t["name"]] = p["queryGroup"]
     for c in model.get("cultures", []):
         cu = {"name": c["name"], "captions": {}, "descriptions": {}, "folders": {}}
 
@@ -405,7 +425,7 @@ def main():
     os.makedirs(outdir, exist_ok=True)
     out = {"file": path, "kind": None, "tables": [], "relationships": [], "measures": [],
            "layout": None, "resources": {}, "customVisuals": [], "parameters": [], "warnings": [],
-           "model": {"hierarchies": [], "folders": [], "dateTables": {}, "calcGroups": [], "roles": [], "functions": [], "calendars": [], "cultures": []}}
+           "model": {"hierarchies": [], "folders": [], "dateTables": {}, "calcGroups": [], "roles": [], "functions": [], "calendars": [], "cultures": [], "queries": [], "groups": {}}}
     with zipfile.ZipFile(path) as z:
         names = z.namelist()
         if "Report/Layout" in names:

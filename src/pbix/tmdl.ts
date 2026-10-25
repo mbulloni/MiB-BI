@@ -75,6 +75,7 @@ function partition(p: Obj, d: number): string {
   const src = p.source ?? {};
   let s = `${tabs(d)}partition ${tmdlName(p.name)} = ${src.type ?? 'm'}\n`;
   if (p.mode) s += `${tabs(d + 1)}mode: ${p.mode}\n`;
+  if (p.queryGroup) s += `${tabs(d + 1)}queryGroup: ${tmdlName(p.queryGroup)}\n`;
   if (src.expression !== undefined) s += `${tabs(d + 1)}source${expr(src.expression, d + 3)}\n`;
   return s + annotations(p, d + 1);
 }
@@ -161,9 +162,10 @@ export function tmslToTmdl(db: Obj): Record<string, string> {
   const out: Record<string, string> = {};
   out['database.tmdl'] = `database\n\tcompatibilityLevel: ${db.compatibilityLevel ?? 1550}\n\tcompatibilityMode: powerBI\n`;
 
-  let m = `model Model\n` + props(model, 1, ['tables', 'relationships', 'expressions', 'roles', 'cultures', 'functions', 'dataAccessOptions', 'perspectives', 'dataSources']);
+  let m = `model Model\n` + props(model, 1, ['tables', 'relationships', 'expressions', 'roles', 'cultures', 'functions', 'dataAccessOptions', 'perspectives', 'dataSources', 'queryGroups']);
   if (model.dataAccessOptions) m += '\tdataAccessOptions\n' + Object.entries(model.dataAccessOptions).map(([k, v]) => prop(k, v, 2)).join('');
   m += annotations(model, 0);
+  for (const g of model.queryGroups ?? []) m += `\nqueryGroup ${tmdlName(g.folder)}\n`;
   const refs = (kind: string, list: Obj[] | undefined) => (list && list.length > 1 ? '\n' + list.map((x) => `ref ${kind} ${tmdlName(x.name)}\n`).join('') : '');
   m += refs('table', model.tables) + refs('role', model.roles) + refs('cultureInfo', model.cultures);
   out['model.tmdl'] = m;
