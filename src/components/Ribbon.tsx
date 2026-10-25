@@ -176,6 +176,8 @@ export function Ribbon() {
             <Big icon="refresh" label={<>Aggiornamento<br />incrementale</>} disabled={!s.tables.some((t) => !t.source.dax && t.storageMode !== 'directQuery')}
               onClick={() => s.set({ incrementalDialog: s.report.refreshPolicies?.[0]?.table ?? s.tables.find((t) => !t.source.dax && t.storageMode !== 'directQuery' && t.columns.some((c) => /^(DATE|TIMESTAMP)/i.test(c.type)))?.name ?? s.tables.find((t) => !t.source.dax && t.storageMode !== 'directQuery')!.name })}
               title="Criteri di aggiornamento incrementale (RangeStart/RangeEnd) e simulazione delle partizioni del servizio" />
+            <Big icon="eye" label="Prospettive" onClick={() => s.set({ perspectivesDialog: true })} disabled={!s.tables.length}
+              title="Sottoinsiemi del modello: il riquadro Dati mostra solo i campi della prospettiva scelta" />
           </Group>
           <Group label="Traduzioni">
             <Big icon="translate" label="Traduzioni" onClick={() => s.set({ translationsDialog: true })} disabled={!s.tables.length}

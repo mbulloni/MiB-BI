@@ -1106,3 +1106,23 @@ thead .pq-rn { z-index: 2; }
 .inc-timeline .inc { background: var(--sel-bg); color: var(--link); }
 .inc-timeline .rt { background: var(--warn-bg); }
 .agg-grid tr.inc-incremental td:first-child { color: var(--link); font-weight: 600; }
+.persp-dlg { width: min(760px, 94vw); height: 72vh; }
+.persp-body { display: flex; gap: 12px; overflow: hidden; }
+.persp-list { width: 220px; display: flex; flex-direction: column; gap: 4px; border-right: 1px solid var(--line); padding-right: 10px; overflow: auto; }
+.persp-item { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 3px; cursor: pointer; }
+.persp-item span:first-child, .persp-item input { flex: 1; min-width: 0; }
+.persp-item.sel { background: var(--sel-bg); }
+.persp-item .hint { color: var(--text2); font-size: 11px; }
+.persp-tree { flex: 1; overflow: auto; font-size: 12.5px; }
+.persp-tree summary { display: flex; align-items: center; gap: 6px; padding: 4px 0; cursor: pointer; font-weight: 600; }
+.persp-field { display: flex; align-items: center; gap: 6px; padding: 2px 0 2px 26px; }
+.data-persp { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; font-size: 12px; }
+.data-persp select { flex: 1; min-width: 0; }
+.ols-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; max-height: 140px; overflow: auto; font-size: 12px; }
+.group-dlg { width: min(760px, 94vw); max-height: 86vh; }
+.group-dlg .hint { color: var(--text2); font-size: 11px; }
+.group-lists { display: flex; gap: 12px; }
+.group-col { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.group-box { height: 280px; overflow: auto; border: 1px solid var(--line); border-radius: 3px; padding: 6px; display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+.group-item { padding: 4px 0; border-bottom: 1px solid var(--line); }
+.group-item input { flex: 1; }

@@ -228,8 +228,9 @@ export function buildModelSchema(report: Report, tables: TableMeta[], autoDates 
   // Tables marked as date table and calculation groups get no automatic date hierarchy (like Power BI).
   const dates = autoDates ? autoDateColumns(tables.filter((t) => !report.dateTables?.[t.name] && !calcOf(t.name))).map((d) => ({ ...d, local: `LocalDateTable_${crypto.randomUUID()}`, rel: crypto.randomUUID() })) : [];
   const folderOf = (t: string, f: string) => report.displayFolders?.[t + '\u0001' + f];
+  const descOf = (t: string, f?: string) => { const d = report.descriptions?.[f === undefined ? t : t + '\u0001' + f]; return d ? { description: d } : {}; };
   const hierarchiesOf = (t: string) => (report.hierarchies ?? []).filter((h) => h.table === t).map((h) => ({
-    name: h.name, lineageTag: crypto.randomUUID(), ...(folderOf(t, h.name) ? { displayFolder: folderOf(t, h.name) } : {}),
+    name: h.name, lineageTag: crypto.randomUUID(), ...descOf(t, h.name), ...(folderOf(t, h.name) ? { displayFolder: folderOf(t, h.name) } : {}),
     levels: h.levels.map((c, ordinal) => ({ name: levelName(h, c), ordinal, column: c, lineageTag: crypto.randomUUID() })),
   }));
   /** Calendars (TOM Calendar › CalendarColumnGroup): a time unit with primary/associated columns, or time-related columns. */
@@ -245,7 +246,7 @@ export function buildModelSchema(report: Report, tables: TableMeta[], autoDates 
   // Power BI "measure tables": only measures, exported with one hidden placeholder column.
   const measureOnly = [...new Set(report.measures.map((m) => m.table))].filter((n) => !tables.some((t) => t.name === n));
   const measuresOf = (table: string) => report.measures.filter((m) => m.table === table).map((m) => ({
-    name: m.name, expression: m.expression.split('\n'), lineageTag: crypto.randomUUID(),
+    name: m.name, expression: m.expression.split('\n'), lineageTag: crypto.randomUUID(), ...descOf(table, m.name),
     ...(m.formatString ? { formatString: m.formatString } : {}),
     ...(folderOf(table, m.name) ? { displayFolder: folderOf(table, m.name) } : {}),
   }));
@@ -277,6 +278,7 @@ export function buildModelSchema(report: Report, tables: TableMeta[], autoDates 
       tables: tables.map((t): any => (calcOf(t.name) ? calcTable(t, calcOf(t.name)!) : {
         name: t.name,
         lineageTag: crypto.randomUUID(),
+        ...descOf(t.name),
         ...(report.dateTables?.[t.name] ? { dataCategory: 'Time' } : {}),
         // Aggregation tables must be hidden (Power BI rejects visible ones).
         ...(report.aggregations?.some((a) => a.table === t.name) ? { isHidden: true } : {}),
@@ -289,7 +291,7 @@ export function buildModelSchema(report: Report, tables: TableMeta[], autoDates 
             : t.source.dax ? { type: 'calculatedTableColumn', isNameInferred: true, isDataTypeInferred: true, sourceColumn: `[${c.name}]` }
               : { sourceColumn: c.name };
           return {
-            name: c.name, dataType: tt.dataType, ...kind, lineageTag: crypto.randomUUID(),
+            name: c.name, dataType: tt.dataType, ...kind, lineageTag: crypto.randomUUID(), ...descOf(t.name, c.name),
             summarizeBy: numeric(tt.dataType) ? 'sum' : 'none',
             ...(tt.dataType === 'dateTime' ? { formatString: tt.m === 'type date' ? 'Short Date' : 'General Date' } : {}),
             ...(t.sortBy?.[c.name] ? { sortByColumn: t.sortBy[c.name] } : {}),
@@ -349,13 +351,35 @@ export function buildModelSchema(report: Report, tables: TableMeta[], autoDates 
       ...(report.functions?.length ? {
         functions: report.functions.map((f) => ({ name: f.name, expression: f.expression.split('\n'), lineageTag: crypto.randomUUID(), ...(f.description ? { description: f.description } : {}) })),
       } : {}),
+      // Prospettive: tables with their columns, measures and hierarchies.
+      ...(report.perspectives?.length ? { perspectives: report.perspectives.map((p) => {
+        const byTable = new Map<string, { name: string; perspectiveColumns: { name: string }[]; perspectiveMeasures: { name: string }[]; perspectiveHierarchies: { name: string }[] }>();
+        for (const k of p.fields) {
+          const [t, f] = k.split('\u0001');
+          if (!byTable.has(t)) byTable.set(t, { name: t, perspectiveColumns: [], perspectiveMeasures: [], perspectiveHierarchies: [] });
+          const e = byTable.get(t)!;
+          if (report.measures.some((m) => m.table === t && m.name === f)) e.perspectiveMeasures.push({ name: f });
+          else if (report.hierarchies?.some((h) => h.table === t && h.name === f)) e.perspectiveHierarchies.push({ name: f });
+          else if (tables.some((x) => x.name === t && x.columns.some((c) => c.name === f))) e.perspectiveColumns.push({ name: f });
+        }
+        return { name: p.name, perspectiveTables: [...byTable.values()].map((e) => Object.fromEntries(Object.entries(e).filter(([, v]) => !Array.isArray(v) || v.length))) };
+      }) } : {}),
       // Traduzioni del modello (one culture per language, translated captions/descriptions/display folders).
       ...(report.cultures?.length ? { cultures: culturesOf(report, tables) } : {}),
       // Sicurezza a livello di riga.
       ...(report.roles?.length ? {
         roles: report.roles.map((r) => ({
           name: r.name, modelPermission: 'read',
-          tablePermissions: r.filters.filter((f) => f.expression.trim()).map((f) => ({ name: f.table, filterExpression: f.expression.split('\n') })),
+          // RLS filters plus object-level security (metadataPermission none on tables / columns).
+          tablePermissions: [...new Set([...r.filters.filter((f) => f.expression.trim()).map((f) => f.table), ...(r.hidden ?? []).map((k) => k.split('\u0001')[0])])].map((table) => {
+            const f = r.filters.find((x) => x.table === table && x.expression.trim());
+            const cols = (r.hidden ?? []).filter((k) => k.startsWith(table + '\u0001')).map((k) => k.split('\u0001')[1]);
+            return {
+              name: table, ...(f ? { filterExpression: f.expression.split('\n') } : {}),
+              ...(r.hidden?.includes(table) ? { metadataPermission: 'none' } : {}),
+              ...(cols.length && !r.hidden?.includes(table) ? { columnPermissions: cols.map((name) => ({ name, metadataPermission: 'none' })) } : {}),
+            };
+          }),
         })),
       } : {}),
       annotations: [

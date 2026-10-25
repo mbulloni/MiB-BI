@@ -110,7 +110,7 @@ export function useVisualData(v: Visual): VisualData {
   const [q, hq] = useMemo(() => {
     const build = (c: typeof cross) => buildVisualQuery(base, tables, report.relationships, [...report.reportFilters, ...page.filters, ...extra], scopedVisuals(page, v), c, report.measures, modelExtras(report, viewAs?.user));
     return [build(mode === 'filter' ? cross : null), mode === 'highlight' ? build(cross) : null];
-  }, [base, tables, report.relationships, report.reportFilters, page.filters, page.visuals, page.interactions, cross, mode, report.measures, extra, report.dateTables, report.calcGroups, report.functions, report.calendars, viewAs?.user]);
+  }, [base, tables, report.relationships, report.reportFilters, page.filters, page.visuals, page.interactions, cross, mode, report.measures, extra, report.dateTables, report.calcGroups, report.functions, report.calendars, viewAs, report.aggregations]);
   const hsql = hq && 'sql' in hq ? hq.sql : null;
   const key = (q && 'sql' in q ? [q.sql, q.totalsSql, q.colTotalsSql, q.rowTotalsSql].join('|') : JSON.stringify(q)) + '|' + (hsql ?? '') + '|' + calcKey;
   const [state, setState] = useState<Omit<VisualData, 'percent' | 'cfItems' | 'allItems'>>({ loading: false, empty: true, items: [], rows: [] });

@@ -15,12 +15,14 @@ export function ModelProperties() {
   const [dateCol, setDateCol] = useState('');
   const [prec, setPrec] = useState('0');
   const [mode, setMode] = useState<StorageMode>('import');
+  const [desc, setDesc] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const key = tg ? tg.table + '\u0001' + (tg.hierarchy ?? tg.field ?? '') : '';
   const g = tg ? s.report.calcGroups?.find((x) => x.table === tg.table) : undefined;
   useEffect(() => {
     if (!tg) return;
     setFolder(s.report.displayFolders?.[key] ?? '');
+    setDesc(s.report.descriptions?.[tg.hierarchy ?? tg.field ? key : tg.table] ?? '');
     setName(tg.hierarchy ?? g?.column ?? '');
     setDateCol(s.report.dateTables?.[tg.table] ?? '');
     setPrec(String(g?.precedence ?? 0));
@@ -37,6 +39,8 @@ export function ModelProperties() {
 
   const ok = async () => {
     setErr(null);
+    const dkey = field ? `${tg.table}\u0001${h && name.trim() ? name.trim() : field}` : tg.table;
+    if (desc.trim() !== (s.report.descriptions?.[dkey] ?? '')) s.setDescription(dkey, desc);
     if (field) {
       if (h && name.trim() && name.trim() !== h.name) {
         if (s.report.hierarchies?.some((x) => x.table === tg.table && x.name === name.trim()) || t?.columns.some((c) => c.name === name.trim())) { setErr(`Il nome "${name.trim()}" è già usato nella tabella.`); return; }
@@ -73,6 +77,11 @@ export function ModelProperties() {
               <span className="hint">Usare \ per le sottocartelle. Vuoto = nessuna cartella.</span>
             </label>
           </>}
+          {!g || field ? (
+            <label className="pq-field">Descrizione
+              <textarea rows={3} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Testo mostrato al passaggio del mouse nel riquadro Dati e usato da Q&A" />
+            </label>
+          ) : null}
           {h && (
             <div className="pq-field">Livelli
               <div className="hier-levels">

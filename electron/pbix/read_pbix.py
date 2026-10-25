@@ -240,6 +240,14 @@ def model_extras_sqlite(db, out):
     for _, r in q("SELECT p.RoleID AS R, t.Name AS T, p.FilterExpression AS E FROM [TablePermission] p JOIN [Table] t ON p.TableID = t.ID"):
         if r["R"] in roles and isinstance(r["E"], str) and r["E"].strip():
             roles[r["R"]]["filters"].append({"table": r["T"], "expression": r["E"]})
+    # Object-level security: MetadataPermission 1 = None (table, or column through ColumnPermission).
+    for _, r in q("SELECT p.RoleID AS R, t.Name AS T FROM [TablePermission] p JOIN [Table] t ON p.TableID = t.ID WHERE p.MetadataPermission = 1"):
+        if r["R"] in roles:
+            roles[r["R"]].setdefault("hidden", []).append(r["T"])
+    for _, r in q("SELECT p.RoleID AS R, t.Name AS T, COALESCE(c.ExplicitName, c.InferredName) AS C FROM [ColumnPermission] cp JOIN [TablePermission] p ON cp.TablePermissionID = p.ID "
+                  "JOIN [Table] t ON p.TableID = t.ID JOIN [Column] c ON cp.ColumnID = c.ID WHERE cp.MetadataPermission = 1"):
+        if r["R"] in roles:
+            roles[r["R"]].setdefault("hidden", []).append(f"{r['T']}\u0001{r['C']}")
     mx["roles"].extend(roles.values())
     for _, r in q("SELECT Name AS N, Expression AS E, Description AS D FROM [Function]"):
         if isinstance(r["N"], str) and isinstance(r["E"], str):
@@ -304,6 +312,20 @@ def model_extras_sqlite(db, out):
                   "LEFT JOIN [Table] bt ON a.BaseTableID = bt.ID LEFT JOIN [Column] bc ON a.BaseColumnID = bc.ID LEFT JOIN [Table] bct ON bc.TableID = bct.ID"):
         put_agg(aggs, r["T"], r["C"], summ.get(int(r["S"] or 0), "sum"), r["BCT"] or r["BT"], r["BC"])
     mx["aggregations"].extend(aggs.values())
+    # Perspectives: fields per perspective table.
+    persp = {}
+    for kind, name in (("Column", "COALESCE(x.ExplicitName, x.InferredName)"), ("Measure", "x.Name"), ("Hierarchy", "x.Name")):
+        for _, r in q(f"SELECT p.Name AS P, t.Name AS T, {name} AS N FROM [Perspective{kind}] pc JOIN [PerspectiveTable] pt ON pc.PerspectiveTableID = pt.ID "
+                      f"JOIN [Perspective] p ON pt.PerspectiveID = p.ID JOIN [Table] t ON pt.TableID = t.ID JOIN [{kind}] x ON pc.{kind}ID = x.ID"):
+            persp.setdefault(r["P"], []).append(f"{r['T']}\u0001{r['N']}")
+    for _, r in q("SELECT Name AS P FROM [Perspective]"):
+        mx["perspectives"].append({"name": r["P"], "fields": persp.get(r["P"], [])})
+    # Descriptions of tables, columns, measures and hierarchies.
+    for _, r in q("SELECT Name AS N, Description AS D FROM [Table] WHERE Description IS NOT NULL AND Description <> ''"):
+        mx["descriptions"][r["N"]] = r["D"]
+    for kind, name in (("Column", "COALESCE(x.ExplicitName, x.InferredName)"), ("Measure", "x.Name"), ("Hierarchy", "x.Name")):
+        for _, r in q(f"SELECT t.Name AS T, {name} AS N, x.Description AS D FROM [{kind}] x JOIN [Table] t ON x.TableID = t.ID WHERE x.Description IS NOT NULL AND x.Description <> ''"):
+            mx["descriptions"][f"{r['T']}\u0001{r['N']}"] = r["D"]
     # Incremental refresh: RefreshGranularityType 0 Day, 1 Month, 2 Quarter, 3 Year; RefreshPolicyMode 0 Import, 1 Hybrid.
     gran = {0: "day", 1: "month", 2: "quarter", 3: "year"}
     for _, r in q("SELECT t.Name AS T, p.RollingWindowGranularity AS RG, p.RollingWindowPeriods AS RN, p.IncrementalGranularity AS IG, "
@@ -358,8 +380,12 @@ def model_extras_tmsl(model, out):
                  **({"formatString": text_of(i["formatStringDefinition"].get("expression"))} if i.get("formatStringDefinition") else {})}
                 for i in items]})
     for r in model.get("roles", []):
+        perms = r.get("tablePermissions", [])
+        hidden = [p["name"] for p in perms if p.get("metadataPermission") == "none"] + \
+                 [f"{p['name']}\u0001{c['name']}" for p in perms for c in p.get("columnPermissions", []) if c.get("metadataPermission") == "none"]
         mx["roles"].append({"name": r["name"], "filters": [{"table": p["name"], "expression": text_of(p.get("filterExpression"))}
-                                                          for p in r.get("tablePermissions", []) if text_of(p.get("filterExpression")).strip()]})
+                                                          for p in perms if text_of(p.get("filterExpression")).strip()],
+                            **({"hidden": hidden} if hidden else {})})
     for e in model.get("expressions", []):
         code = text_of(e.get("expression"))
         if e.get("kind", "m") == "m" and not re.search(r"IsParameterQuery\s*=\s*true", code, re.I):
@@ -379,7 +405,15 @@ def model_extras_tmsl(model, out):
             if p.get("mode") in ("directQuery", "dual"):
                 mx["storage"][t["name"]] = p["mode"]
     mx["aggregations"].extend(tmsl_aggs.values())
+    for p in model.get("perspectives", []):
+        mx["perspectives"].append({"name": p["name"], "fields": [f"{t['name']}\u0001{x['name']}" for t in p.get("perspectiveTables", [])
+                                                              for x in t.get("perspectiveColumns", []) + t.get("perspectiveMeasures", []) + t.get("perspectiveHierarchies", [])]})
     for t in model.get("tables", []):
+        if t.get("description"):
+            mx["descriptions"][t["name"]] = text_of(t["description"])
+        for x in t.get("columns", []) + t.get("measures", []) + t.get("hierarchies", []):
+            if x.get("description"):
+                mx["descriptions"][f"{t['name']}\u0001{x['name']}"] = text_of(x["description"])
         rp = t.get("refreshPolicy")
         if isinstance(rp, dict):
             put_policy(mx, t["name"], rp.get("rollingWindowGranularity"), rp.get("rollingWindowPeriods"), rp.get("incrementalGranularity"),
@@ -484,7 +518,7 @@ def main():
     os.makedirs(outdir, exist_ok=True)
     out = {"file": path, "kind": None, "tables": [], "relationships": [], "measures": [],
            "layout": None, "resources": {}, "customVisuals": [], "parameters": [], "warnings": [],
-           "model": {"hierarchies": [], "folders": [], "dateTables": {}, "calcGroups": [], "roles": [], "functions": [], "calendars": [], "cultures": [], "queries": [], "groups": {}, "storage": {}, "aggregations": [], "refreshPolicies": []}}
+           "model": {"hierarchies": [], "folders": [], "dateTables": {}, "calcGroups": [], "roles": [], "functions": [], "calendars": [], "cultures": [], "queries": [], "groups": {}, "storage": {}, "aggregations": [], "refreshPolicies": [], "descriptions": {}, "perspectives": []}}
     with zipfile.ZipFile(path) as z:
         names = z.namelist()
         if "Report/Layout" in names:

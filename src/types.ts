@@ -316,6 +316,14 @@ export interface RefreshPolicy {
   realTime?: boolean;
 }
 
+/** Nuovo gruppo on `column`: a list of groups of values (others in "Altro" or kept as they are) or bins of a number
+ *  (`size`) or of a date (`size` years/months). Saved as the DAX calculated column `name` (grouping.ts#groupingDax). */
+export interface Grouping {
+  table: string; name: string; column: string; kind: 'list' | 'bin';
+  groups?: { name: string; values: (string | null)[] }[]; other?: string;
+  bin?: { size: number; unit?: 'year' | 'month' };
+}
+
 /** Gestisci aggregazioni: summarization of an aggregation table column (TMSL alternateOf). */
 export type AggSummarization = 'groupBy' | 'sum' | 'count' | 'min' | 'max' | 'countRows';
 /** Aggregation table `table` answering queries on `detail`: aggregation column → mapping (detail column; none for countRows). */
@@ -393,6 +401,12 @@ export interface Report {
   calendars?: CalendarDef[];
   /** Gestisci aggregazioni: aggregation tables (hidden in the Data pane) and their mappings to detail tables. */
   aggregations?: AggTable[];
+  /** Gruppi (Nuovo gruppo): definitions of the grouping calculated columns, for editing them again. */
+  groupings?: Grouping[];
+  /** Prospettive: subsets of the model; `fields` keys "Table\u0001Field" (columns, measures, hierarchies). */
+  perspectives?: { name: string; fields: string[] }[];
+  /** Descrizioni of tables ("Table") and fields ("Table\u0001Field"): Data pane tooltips, TMSL description, Q&A. */
+  descriptions?: Record<string, string>;
   /** Aggiornamento incrementale per table. */
   refreshPolicies?: RefreshPolicy[];
   /** Power Query queries that are not loaded in the model (Abilita caricamento off): functions, helper queries. */
@@ -408,7 +422,8 @@ export interface Hierarchy { table: string; name: string; levels: string[]; leve
 export const levelName = (h: Hierarchy, column: string) => h.levelNames?.[column] ?? column;
 export interface CalcItem { name: string; expression: string; formatString?: string; }
 export interface CalcGroup { table: string; column: string; precedence: number; items: CalcItem[]; }
-export interface RoleDef { name: string; filters: { table: string; expression: string }[]; }
+/** `hidden`: object-level security (metadataPermission none) for tables ("Table") and columns ("Table\u0001Column"). */
+export interface RoleDef { name: string; filters: { table: string; expression: string }[]; hidden?: string[]; }
 /** DAX user-defined function (DEFINE FUNCTION / TMDL `function`): `expression` = "( params ) => body". */
 export interface DaxFunction { name: string; expression: string; description?: string; }
 /** Calendar category (TOM TimeUnit) of a column group. */

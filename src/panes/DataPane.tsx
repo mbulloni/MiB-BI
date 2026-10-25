@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { isHiddenObject, olsHidden } from '../ols';
 import { useStore } from '../store';
 import { levelName, type TableMeta } from '../types';
 import { isDate, isNumeric } from '../format';
@@ -48,6 +49,9 @@ export function DataPane() {
   const drag = (payload: object) => (e: React.DragEvent) => { e.dataTransfer.setData(FIELD_MIME, JSON.stringify(payload)); e.dataTransfer.effectAllowed = 'copy'; };
   const ctx = (m: Omit<MenuState, 'x' | 'y'>) => (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); setMenu({ x: e.clientX, y: e.clientY, ...m }); };
 
+  const persp = s.report.perspectives?.find((p) => p.name === s.perspective);
+  const ols = s.viewAs ? olsHidden() : null; // Visualizza come: objects hidden by object-level security
+  const desc = (table: string, field: string) => s.report.descriptions?.[table + '\u0001' + field];
   const columnNode = (t: TableMeta, name: string, depth: number, level?: string, label?: string) => {
     const c = t.columns.find((x) => x.name === name);
     const checked = used.has(t.name + '\u0001' + name);
@@ -58,7 +62,7 @@ export function DataPane() {
         onContextMenu={ctx(level ? { table: t.name, hierarchy: level, level: name } : { table: t.name, column: name })}>
         {report && <input type="checkbox" checked={checked} readOnly />}
         <span className="ty">{t.calcColumns?.some((x) => x.name === name) ? <i className="fx-ico">fx</i> : isNumeric(c) ? <Icon name="sigma" size={13} /> : isDate(c) ? <Icon name="calendar" size={13} /> : null}</span>
-        <span className="nm" title={c ? `${name} (${c.type})` : name}>{label ?? name}</span>
+        <span className="nm" title={(desc(t.name, name) ? desc(t.name, name) + '\n' : '') + (c ? `${name} (${c.type})` : name)}>{label ?? name}</span>
       </div>
     );
   };
@@ -75,7 +79,7 @@ export function DataPane() {
           onContextMenu={ctx({ table: t.name, measure: m.name })}>
           {report && <input type="checkbox" checked={checked} readOnly />}
           <span className="ty"><Icon name="calc" size={13} /></span>
-          <span className="nm" title={`${m.name} = ${m.expression}`}>{m.name}</span>
+          <span className="nm" title={(desc(t.name, m.name) ? desc(t.name, m.name) + '\n' : '') + `${m.name} = ${m.expression}`}>{m.name}</span>
         </div>
       );
     }
@@ -92,7 +96,7 @@ export function DataPane() {
           <span className="chev" onClick={(e) => { e.stopPropagation(); toggle(k); }}><Icon name={isOpen(k) ? 'chevronDown' : 'chevronRight'} size={12} /></span>
           {report && <input type="checkbox" checked={all} readOnly />}
           <span className="ty"><Icon name="hierarchy" size={13} /></span>
-          <span className="nm" title={`${h.name}: ${h.levels.join(' › ')}`}>{h.name}</span>
+          <span className="nm" title={(desc(t.name, h.name) ? desc(t.name, h.name) + '\n' : '') + `${h.name}: ${h.levels.join(' › ')}`}>{h.name}</span>
         </div>
         {isOpen(k) && h.levels.map((l) => columnNode(t, l, depth + 1, h.name, levelName(h, l)))}
       </div>
@@ -136,11 +140,19 @@ export function DataPane() {
         <div className="tools"><button title="Comprimi" onClick={() => s.set({ panes: { ...s.panes, data: false } })}><Icon name="collapseRight" /></button></div>
       </div>
       <div className="pane-search"><Icon name="search" size={14} /><input type="search" placeholder="Cerca" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      {!!s.report.perspectives?.length && (
+        <label className="data-persp">Prospettiva
+          <select value={s.perspective ?? ''} onChange={(e) => s.set({ perspective: e.target.value || null })}>
+            <option value="">(Intero modello)</option>
+            {s.report.perspectives.map((p) => <option key={p.name}>{p.name}</option>)}
+          </select>
+        </label>
+      )}
       <div className="pane-body tree">
         {!s.tables.length && <div style={{ color: 'var(--text2)', padding: '6px 4px' }}>Nessun dato caricato. Usare <b>Ottieni dati</b> nella barra multifunzione.</div>}
         {/* Aggregation tables are hidden in the report view, like Power BI. */}
-        {[...s.tables.filter((t) => !report || !s.report.aggregations?.some((a) => a.table === t.name)), ...measureOnly].map((t) => {
-          const match = (n: string) => !q || n.toLowerCase().includes(q.toLowerCase()) || t.name.toLowerCase().includes(q.toLowerCase());
+        {[...s.tables.filter((t) => (!report || !s.report.aggregations?.some((a) => a.table === t.name)) && !isHiddenObject(ols, t.name)), ...measureOnly].map((t) => {
+          const match = (n: string) => !isHiddenObject(ols, t.name, n) && (!persp || persp.fields.includes(t.name + '\u0001' + n)) && (!q || n.toLowerCase().includes(q.toLowerCase()) || t.name.toLowerCase().includes(q.toLowerCase()));
           const folderOf = (n: string) => folders[t.name + '\u0001' + n] ?? '';
           const g = calcGroup(t.name);
           const items: Item[] = [
@@ -150,7 +162,7 @@ export function DataPane() {
             ...hierarchies.filter((h) => h.table === t.name && (match(h.name) || h.levels.some(match))).map((h): Item => ({ kind: 'hierarchy', name: h.name, folder: folderOf(h.name) })),
           ];
           const calcItems = g ? g.items.filter((i) => match(i.name)) : [];
-          if (q && !items.length && !calcItems.length) return null;
+          if ((q || persp) && !items.length && !calcItems.length) return null;
           const tk = 't\u0002' + t.name;
           const dateCol = s.report.dateTables?.[t.name];
           return (
@@ -160,7 +172,7 @@ export function DataPane() {
                 onContextMenu={ctx({ table: t.name })}>
                 <span onClick={(e) => { e.stopPropagation(); toggle(tk, s.tables.length === 1); }}><Icon name={isOpen(tk, s.tables.length === 1) ? 'chevronDown' : 'chevronRight'} size={12} /></span>
                 {g ? <Icon name="calcGroup" /> : t.source.dax ? <i className="fx-ico" title="Tabella calcolata">fx</i> : dateCol ? <Icon name="calendar" /> : <Icon name="tableSmall" />}
-                <span className="nm" title={g ? `Gruppo di calcolo (precedenza ${g.precedence})` : t.source.dax ? `${t.name} = ${t.source.dax}` : dateCol ? `${t.name} — tabella delle date (${dateCol})` : t.name}>{t.name}</span>
+                <span className="nm" title={g ? `Gruppo di calcolo (precedenza ${g.precedence})` : t.source.dax ? `${t.name} = ${t.source.dax}` : (s.report.descriptions?.[t.name] ? s.report.descriptions[t.name] + '\n' : '') + (dateCol ? `${t.name} — tabella delle date (${dateCol})` : t.name)}>{t.name}</span>
                 <button className="more" onClick={ctx({ table: t.name })}><Icon name="more" size={14} /></button>
               </div>
               {isOpen(tk, s.tables.length === 1) && (
@@ -282,6 +294,9 @@ function DataMenu({ menu, close, report, toggleOpen, isOpen }: { menu: MenuState
     </>;
   } else if (menu.column) {
     body = <>
+      {s.report.groupings?.some((g) => g.table === menu.table && g.name === menu.column)
+        ? <button onClick={run(() => s.set({ groupDialog: { table: menu.table, column: menu.column!, name: menu.column } }))}><Icon name="tableSmall" />Modifica gruppi</button>
+        : <button disabled={!t} onClick={run(() => s.set({ groupDialog: { table: menu.table, column: menu.column! } }))}><Icon name="tableSmall" />Nuovo gruppo</button>}
       {t?.calcColumns?.some((c) => c.name === menu.column) && <>
         <button onClick={run(() => s.startDax('column', menu.table, menu.column))}><Icon name="calc" />Modifica colonna calcolata</button>
         <button onClick={run(() => void s.deleteCalcColumn(menu.table, menu.column!))}><Icon name="trash" />Elimina colonna</button>

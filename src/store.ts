@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { globalOptions } from './options';
 import { api, type UpdateInfo } from './api';
-import type { Bookmark, CrossFilter, DbConnection, FieldRef, Filter, Interaction, NewStep, Page, PQParam, PQType, Relationship, Report, Step, Theme, TableMeta, StorageMode, AggTable, RefreshPolicy, View, Visual, VisualFormat, VisualType } from './types';
+import type { Bookmark, CrossFilter, DbConnection, FieldRef, Filter, Interaction, NewStep, Page, PQParam, PQType, Relationship, Report, Step, Theme, TableMeta, StorageMode, AggTable, RefreshPolicy, Grouping, View, Visual, VisualFormat, VisualType } from './types';
 import { interactionKey } from './visuals/interactions';
 import { propagateSync } from './visuals/sync';
 import { refLabel, isNumeric, setCaptions, uid } from './format';
@@ -12,6 +12,8 @@ import { calcColumnSql, calcTableSql, checkCalcItem, checkFunction, checkMeasure
 import { inlineParamsInM, paramFromM, resolveSource, setParams, withParams } from './pq/params';
 import { partitions, policyWindow, ts, type PartitionInfo } from './incremental';
 import { appendStep } from './pq/m/edit';
+import { olsFor, setOls } from './ols';
+import { groupingDax } from './grouping';
 import { inlineFromM } from './pq/mparse';
 import { parseLayout, setCfExportRanges, setHierarchyLevels, themeFromLayout } from './pbix/layout';
 import { runVisualQuery } from './visuals/useVisualData';
@@ -152,10 +154,12 @@ function mergeStep(prev: Step, next: Step): boolean {
 
 const reEscape = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/** Model translations follow a renamed object: `match(key)` → new key or null (keys "Table" / "Table\u0001Field"). */
+/** Model translations and descriptions follow a renamed object: `match(key)` → new key or null (keys "Table" / "Table\u0001Field"). */
 function renameInCultures(r: Report, match: (key: string) => string | null) {
-  for (const c of r.cultures ?? []) {
-    for (const map of [c.captions, c.descriptions, c.folders]) {
+  for (const p of r.perspectives ?? []) p.fields = p.fields.map((k) => match(k) ?? k);
+  for (const role of r.roles ?? []) if (role.hidden) role.hidden = role.hidden.map((k) => match(k) ?? k);
+  for (const c of [...(r.cultures ?? []), { captions: r.descriptions }]) {
+    for (const map of [c.captions, (c as any).descriptions, (c as any).folders]) {
       if (!map) continue;
       for (const k of Object.keys(map)) { const to = match(k); if (to !== null && to !== k) { map[to] = map[k]; delete map[k]; } }
     }
@@ -172,7 +176,7 @@ function renameTableInReport(r: Report, from: string, to: string) {
     for (const k of ['table', 'fromTable', 'toTable']) if (o[k] === from) o[k] = to;
     Object.values(o).forEach(walk);
   };
-  walk(r.pages); walk(r.reportFilters); walk(r.relationships); walk(r.measures); walk(r.hierarchies); walk(r.calcGroups); walk(r.roles); walk(r.calendars); walk(r.refreshPolicies);
+  walk(r.pages); walk(r.reportFilters); walk(r.relationships); walk(r.measures); walk(r.hierarchies); walk(r.calcGroups); walk(r.roles); walk(r.calendars); walk(r.refreshPolicies); walk(r.groupings);
   if (r.modelLayout[from]) { r.modelLayout[to] = r.modelLayout[from]; delete r.modelLayout[from]; }
   for (const a of r.aggregations ?? []) { if (a.table === from) a.table = to; if (a.detail === from) a.detail = to; }
   renameInCultures(r, (k) => (k === from ? to : k.startsWith(from + '\u0001') ? to + k.slice(from.length) : null));
@@ -207,6 +211,7 @@ function renameColumnInDax(r: Report, table: string, from: string, to: string) {
   }
   for (const g of r.calcGroups ?? []) for (const i of g.items) { i.expression = fix(i.expression); if (i.formatString) i.formatString = fix(i.formatString); }
   for (const role of r.roles ?? []) for (const f of role.filters) f.expression = fix(f.expression);
+  for (const g of r.groupings ?? []) if (g.table === table) { if (g.column === from) g.column = to; if (g.name === from) g.name = to; }
   for (const p of r.refreshPolicies ?? []) if (p.table === table) { if (p.column === from) p.column = to; if (p.detectChanges === from) p.detectChanges = to; }
   for (const a of r.aggregations ?? []) {
     if (a.detail === table) for (const m of Object.values(a.columns)) if (m.column === from) m.column = to;
@@ -311,6 +316,16 @@ interface State {
   /** Proprietà (Data pane / model view): field, hierarchy or table being edited. */
   propsTarget: { table: string; field?: string; hierarchy?: string } | null;
   setDisplayFolder: (table: string, field: string, folder: string) => void;
+  /** Nuovo gruppo / Modifica gruppi: column to group, or the grouping column (`name`) to edit. */
+  groupDialog: { table: string; column: string; name?: string } | null;
+  /** Creates or replaces the grouping column; returns an error message or null. */
+  saveGrouping: (g: Grouping, original?: string) => Promise<string | null>;
+  /** Prospettive: dialog, and the perspective that filters the Data pane (null = whole model). */
+  perspectivesDialog: boolean;
+  perspective: string | null;
+  setPerspectives: (list: { name: string; fields: string[] }[]) => void;
+  /** Descrizione of a table ("Table") or field ("Table\u0001Field"); empty text removes it. */
+  setDescription: (key: string, text: string) => void;
   createHierarchy: (table: string, column: string) => void;
   addHierarchyLevel: (table: string, hierarchy: string, column: string) => void;
   updateHierarchy: (table: string, name: string, patch: Partial<import('./types').Hierarchy>) => void;
@@ -824,7 +839,7 @@ export const useStore = create<State>((set, get) => {
         const dts = Object.fromEntries(Object.entries(mx?.dateTables ?? {}).filter(([t]) => known(t)));
         if (Object.keys(dts).length) extrasReport.dateTables = dts;
         if (mx?.calcGroups.length) extrasReport.calcGroups = mx.calcGroups.map((g) => ({ table: g.table, column: g.column, precedence: g.precedence, items: g.items.map((i) => ({ name: i.name, expression: i.expression, ...(i.formatString ? { formatString: i.formatString } : {}) })) }));
-        const roles = (mx?.roles ?? []).map((r) => ({ name: r.name, filters: r.filters.filter((f) => known(f.table)) }));
+        const roles = (mx?.roles ?? []).map((r) => ({ name: r.name, filters: r.filters.filter((f) => known(f.table)), ...(r.hidden?.some((k) => known(k.split('\u0001')[0])) ? { hidden: r.hidden.filter((k) => known(k.split('\u0001')[0])) } : {}) }));
         if (roles.length) extrasReport.roles = roles;
         if (mx?.functions?.length) extrasReport.functions = mx.functions;
         const cals = (mx?.calendars ?? []).filter((c) => known(c.table));
@@ -837,6 +852,10 @@ export const useStore = create<State>((set, get) => {
         if (aggs.length) extrasReport.aggregations = aggs;
         const pols = (mx?.refreshPolicies ?? []).filter((p) => known(p.table));
         if (pols.length) extrasReport.refreshPolicies = pols;
+        const descs = Object.fromEntries(Object.entries(mx?.descriptions ?? {}).filter(([k]) => known(k.split('\u0001')[0])));
+        if (Object.keys(descs).length) extrasReport.descriptions = descs;
+        const persps = (mx?.perspectives ?? []).map((p) => ({ name: p.name, fields: p.fields.filter((k) => known(k.split('\u0001')[0])) }));
+        if (persps.length) extrasReport.perspectives = persps;
         if (extrasReport.calcGroups) {
           set({ report: { ...get().report, calcGroups: extrasReport.calcGroups } });
           await get().syncCalcTables();
@@ -1000,6 +1019,7 @@ export const useStore = create<State>((set, get) => {
           const tables = get().tables.flatMap((t) => (per.length && per.every((m) => m.has(t.name)) ? [{ table: t.name, where: per.map((m) => `(${m.get(t.name)})`).join(' OR ') }] : []));
           await api.setRole(tables);
         }
+        setOls(v ? olsFor(roles) : null);
         set((st) => ({ viewAs: v, viewAsDialog: false, crossFilter: null, dataVersion: st.dataVersion + 1 }));
       } catch (e: any) {
         get().notify('Visualizza come non riuscito: ' + e.message.split('\n')[0], 10000);
@@ -1012,6 +1032,33 @@ export const useStore = create<State>((set, get) => {
       if (va) await get().setViewAs({ ...va, roles: va.roles.filter((n) => roles.some((r) => r.name === n)) });
     },
     propsTarget: null,
+    perspectivesDialog: false,
+    perspective: null,
+    groupDialog: null,
+    saveGrouping: async (g, original) => {
+      const t = get().tables.find((x) => x.name === g.table);
+      const col = t?.columns.find((c) => c.name === g.column);
+      if (!t || !col) return 'Colonna non trovata.';
+      const expr = groupingDax(g, isNumeric(col));
+      get().set({ daxEdit: { kind: 'column', table: g.table, original: original ?? null, text: daxShow(`${g.name} = ${expr}`) } });
+      const ok = await get().saveDax();
+      const err = ok ? null : get().daxEdit?.error ?? 'Impossibile creare il gruppo.';
+      if (!ok) { get().set({ daxEdit: null }); return err; }
+      get().mut((r) => {
+        const list = (r.groupings ?? []).filter((x) => !(x.table === g.table && (x.name === g.name || x.name === original)));
+        r.groupings = [...list, g];
+      });
+      return null;
+    },
+    setPerspectives: (list) => {
+      get().mut((r) => { if (list.length) r.perspectives = list; else delete r.perspectives; });
+      if (get().perspective && !list.some((p) => p.name === get().perspective)) set({ perspective: null });
+    },
+    setDescription: (key, text) => get().mut((r) => {
+      const d = { ...(r.descriptions ?? {}) };
+      if (text.trim()) d[key] = text.trim(); else delete d[key];
+      if (Object.keys(d).length) r.descriptions = d; else delete r.descriptions;
+    }),
     setDisplayFolder: (table, field, folder) => get().mut((r) => {
       const k = table + '\u0001' + field;
       const f = { ...(r.displayFolders ?? {}) };
@@ -1342,6 +1389,7 @@ export const useStore = create<State>((set, get) => {
       try {
         const meta = await api.dropColumn(table, name);
         set((s) => ({ tables: s.tables.map((t) => (t.name === table ? { ...t, columns: meta.columns, calcColumns: t.calcColumns?.filter((c) => c.name !== name) } : t)), dataVersion: s.dataVersion + 1, dirty: true }));
+        if (get().report.groupings?.some((g) => g.table === table && g.name === name)) get().mut((r) => { r.groupings = r.groupings!.filter((g) => !(g.table === table && g.name === name)); if (!r.groupings.length) delete r.groupings; });
       } catch (e: any) { get().notify(e.message); }
     },
     // Calculated tables, then calculated columns, after any data load (they read loaded data).
@@ -2118,6 +2166,10 @@ export const useStore = create<State>((set, get) => {
         if (r.refreshPolicies) { r.refreshPolicies = r.refreshPolicies.filter((p) => p.table !== name); if (!r.refreshPolicies.length) delete r.refreshPolicies; }
         if (r.aggregations) { r.aggregations = r.aggregations.filter((a) => a.table !== name && a.detail !== name); if (!r.aggregations.length) delete r.aggregations; }
         for (const k of Object.keys(r.displayFolders ?? {})) if (k.startsWith(name + '\u0001')) delete r.displayFolders![k];
+        for (const k of Object.keys(r.descriptions ?? {})) if (k === name || k.startsWith(name + '\u0001')) delete r.descriptions![k];
+        for (const p of r.perspectives ?? []) p.fields = p.fields.filter((k) => !k.startsWith(name + '\u0001'));
+        if (r.groupings) { r.groupings = r.groupings.filter((g) => g.table !== name); if (!r.groupings.length) delete r.groupings; }
+        for (const role of r.roles ?? []) if (role.hidden) role.hidden = role.hidden.filter((k) => k !== name && !k.startsWith(name + '\u0001'));
         for (const role of r.roles ?? []) role.filters = role.filters.filter((f) => f.table !== name);
       });
       set((s) => ({ tables: s.tables.filter((t) => t.name !== name), dataVersion: s.dataVersion + 1, dataViewTable: s.dataViewTable === name ? null : s.dataViewTable, dirty: true }));
@@ -2166,7 +2218,7 @@ export const useStore = create<State>((set, get) => {
       if (get().viewAs) { await api.setRole(null); set({ viewAs: null }); }
       for (const t of get().tables) await api.dropTable(t.name);
       const r = emptyReport();
-      set({ sourceName: null, tables: [], report: r, activePageId: r.pages[0].id, selectedVisualId: null, crossFilter: null, filePath: null, dirty: false, past: [], future: [], fileMenu: false, view: 'report', dataViewTable: null, dataVersion: get().dataVersion + 1 });
+      set({ perspective: null, sourceName: null, tables: [], report: r, activePageId: r.pages[0].id, selectedVisualId: null, crossFilter: null, filePath: null, dirty: false, past: [], future: [], fileMenu: false, view: 'report', dataViewTable: null, dataVersion: get().dataVersion + 1 });
     },
     save: async (as = false) => {
       const { tables, report, filePath, sourceName } = get();

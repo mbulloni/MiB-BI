@@ -4,6 +4,7 @@ import { isNumeric, monthNames, quarterPrefix } from './format';
 import { visualDef } from './visuals/catalog';
 import { cfInput, fieldKey } from './visuals/condfmt';
 import { aggOrigin, rewriteForAggregations } from './aggregations';
+import { olsBlock, olsHidden } from './ols';
 
 
 export const NULL_KEY = '__NULL__';
@@ -447,6 +448,13 @@ export function buildVisualQuery(
   if (modelExtras.aggregations?.length && v.type !== 'slicer') {
     const r = rewriteForAggregations(modelExtras.aggregations, tables.map((t) => t.name), rels, v, filters, visuals, cross);
     if (r) { v = r.v; filters = r.filters; visuals = r.visuals; cross = r.cross; aggTable = r.table; }
+  }
+  // Sicurezza a livello di oggetto: visuals that use a hidden object cannot be shown.
+  if (olsHidden()) {
+    for (const f of [...Object.values(v.fields).flat(), ...(v.filters ?? []).map((x) => ({ table: x.table, column: x.column, agg: 'none' as const }))]) {
+      const b = olsBlock(f, daxMeasures);
+      if (b) return { error: `Impossibile visualizzare l'oggetto visivo: usa ${b}, a cui il ruolo corrente non ha accesso (sicurezza a livello di oggetto).` };
+    }
   }
   const def = visualDef(v.type, v.custom);
   const items: QueryItem[] = [];

@@ -51,11 +51,18 @@ export function RolesDialog() {
     catch (e: any) { setMsg({ ok: false, text: e.message.split('\n')[0] }); }
   };
   const save = () => {
-    const clean = roles.map((r) => ({ name: r.name.trim(), filters: r.filters.filter((f) => f.expression.trim()) }));
+    const clean = roles.map((r) => ({ name: r.name.trim(), filters: r.filters.filter((f) => f.expression.trim()), ...(r.hidden?.length ? { hidden: r.hidden } : {}) }));
     const err = check(clean);
     if (err) { setMsg({ ok: false, text: err }); return; }
     void s.saveRoles(clean);
   };
+  const hid = (k: string) => !!role?.hidden?.includes(k);
+  const setHidden = (k: string, on: boolean) => upd((r) => {
+    const h = new Set(r[sel].hidden ?? []);
+    if (on) h.add(k); else h.delete(k);
+    if (h.size) r[sel].hidden = [...h]; else delete r[sel].hidden;
+  });
+  const cols = s.tables.find((t) => t.name === table)?.columns ?? [];
   const newRole = () => upd((r) => {
     let n = 'Nuovo ruolo', i = 2;
     while (r.some((x) => x.name === n)) n = `Nuovo ruolo ${i++}`;
@@ -85,7 +92,7 @@ export function RolesDialog() {
             <div className="roles-list">
               {s.tables.filter((t) => !s.report.calcGroups?.some((g) => g.table === t.name)).map((t) => (
                 <div key={t.name} className={'roles-item' + (t.name === table ? ' active' : '')} onClick={() => { setTable(t.name); setMsg(null); }}>
-                  <Icon name={role?.filters.some((f) => f.table === t.name && f.expression.trim()) ? 'filter' : 'tableSmall'} size={14} /><span>{t.name}</span>
+                  <Icon name={role?.hidden?.some((k) => k === t.name || k.startsWith(t.name + '\u0001')) ? 'eyeOff' : role?.filters.some((f) => f.table === t.name && f.expression.trim()) ? 'filter' : 'tableSmall'} size={14} /><span>{t.name}</span>
                 </div>
               ))}
             </div>
@@ -96,6 +103,20 @@ export function RolesDialog() {
               <span className="hint">Espressione DAX valutata riga per riga: le righe per cui è TRUE sono visibili ai membri del ruolo (es. <code>[Country] = "Italy"</code> o <code>[Email] = USERPRINCIPALNAME()</code>). Il filtro si propaga alle tabelle collegate dal lato uno al lato molti.</span>
               <DaxInput className="roles-dax" value={daxShow(expr)} onChange={(t) => setExpr(daxStore(t))} home={table} rows={7} placeholder={`[Colonna] = "valore"`} />
               <div><button className="btn" onClick={verify}>✓ Verifica DAX</button></div>
+              <div className="roles-hd" style={{ marginTop: 10 }}>Sicurezza a livello di oggetto</div>
+              <label className="pq-row" style={{ gap: 8, alignItems: 'center' }}>Autorizzazione tabella
+                <select value={hid(table) ? 'none' : 'read'} onChange={(e) => setHidden(table, e.target.value === 'none')}>
+                  <option value="read">Lettura</option><option value="none">Nessuno (tabella nascosta)</option>
+                </select>
+              </label>
+              {!hid(table) && (
+                <div className="ols-cols">
+                  {cols.map((c) => (
+                    <label key={c.name} className="chk"><input type="checkbox" checked={hid(table + '\u0001' + c.name)} onChange={(e) => setHidden(table + '\u0001' + c.name, e.target.checked)} />Nascondi {c.name}</label>
+                  ))}
+                </div>
+              )}
+              <span className="hint">I membri del ruolo non vedono gli oggetti nascosti: gli oggetti visivi che li usano, anche tramite una misura, mostrano un errore.</span>
             </> : <span className="hint">Creare o selezionare un ruolo.</span>}
             {msg && <div className={msg.ok ? 'roles-ok' : 'daxbar-err'}><Icon name={msg.ok ? 'info' : 'warning'} size={14} />{msg.text}</div>}
           </div>

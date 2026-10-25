@@ -31,7 +31,12 @@ function fromTmsl(schema, out) {
   pushParams(out, (model.expressions ?? []).map((e) => ({ name: e.name, expression: joinExpr(e.expression), description: e.description })));
   const mx = extras(out);
   pushQueries(mx, (model.expressions ?? []).map((e) => ({ name: e.name, code: joinExpr(e.expression), group: e.queryGroup, kind: e.kind })), (model.tables ?? []).map((t) => ({ name: t.name, group: (t.partitions ?? []).find((p) => p.queryGroup)?.queryGroup, mode: (t.partitions ?? [])[0]?.mode })));
-  for (const t of model.tables ?? []) if (t.refreshPolicy) pushPolicy(mx, t.name, t.refreshPolicy);
+  for (const p of model.perspectives ?? []) mx.perspectives.push({ name: p.name, fields: (p.perspectiveTables ?? []).flatMap((t) => [...(t.perspectiveColumns ?? []), ...(t.perspectiveMeasures ?? []), ...(t.perspectiveHierarchies ?? [])].map((x) => `${t.name}\u0001${x.name}`)) });
+  for (const t of model.tables ?? []) {
+    if (t.refreshPolicy) pushPolicy(mx, t.name, t.refreshPolicy);
+    if (t.description) mx.descriptions[t.name] = joinExpr(t.description);
+    for (const x of [...(t.columns ?? []), ...(t.measures ?? []), ...(t.hierarchies ?? [])]) if (x.description) mx.descriptions[`${t.name}\u0001${x.name}`] = joinExpr(x.description);
+  }
   pushAggs(mx, (model.tables ?? []).flatMap((t) => (t.columns ?? []).filter((c) => c.alternateOf?.summarization).map((c) => ({ table: t.name, column: c.name, summarization: c.alternateOf.summarization, detail: c.alternateOf.baseColumn?.table ?? c.alternateOf.baseTable, baseColumn: c.alternateOf.baseColumn?.column }))));
   for (const t of model.tables ?? []) {
     for (const h of t.hierarchies ?? []) {
@@ -62,7 +67,11 @@ function fromTmsl(schema, out) {
       });
     }
   }
-  for (const r of model.roles ?? []) mx.roles.push({ name: r.name, filters: (r.tablePermissions ?? []).filter((p) => joinExpr(p.filterExpression).trim()).map((p) => ({ table: p.name, expression: joinExpr(p.filterExpression) })) });
+  for (const r of model.roles ?? []) {
+    const perms = r.tablePermissions ?? [];
+    const hidden = [...perms.filter((p) => p.metadataPermission === 'none').map((p) => p.name), ...perms.flatMap((p) => (p.columnPermissions ?? []).filter((c) => c.metadataPermission === 'none').map((c) => `${p.name}\u0001${c.name}`))];
+    mx.roles.push({ name: r.name, filters: perms.filter((p) => joinExpr(p.filterExpression).trim()).map((p) => ({ table: p.name, expression: joinExpr(p.filterExpression) })), ...(hidden.length ? { hidden } : {}) });
+  }
   for (const c of model.cultures ?? []) {
     const tables = (c.translations?.model?.tables ?? []).map((t) => ({
       name: t.name, caption: t.translatedCaption, description: t.translatedDescription, folder: t.translatedDisplayFolder,
@@ -131,7 +140,7 @@ function splitRef(r) {
 
 /** Model properties besides tables/relationships/measures (same shape as read_pbix.py). */
 function extras(out) {
-  out.model ??= { hierarchies: [], folders: [], dateTables: {}, calcGroups: [], roles: [], functions: [], calendars: [], cultures: [], queries: [], groups: {}, storage: {}, aggregations: [], refreshPolicies: [] };
+  out.model ??= { hierarchies: [], folders: [], dateTables: {}, calcGroups: [], roles: [], functions: [], calendars: [], cultures: [], queries: [], groups: {}, storage: {}, aggregations: [], refreshPolicies: [], descriptions: {}, perspectives: [] };
   return out.model;
 }
 
@@ -296,7 +305,15 @@ function fromTmdl(dir, out) {
   const mx = extras(out);
   pushQueries(mx, objs.filter((o) => o.kind === 'expression').map((e) => ({ name: e.name, code: e.value ?? '', group: e.props.queryGroup })),
     objs.filter((o) => o.kind === 'table').map((t) => ({ name: t.name, group: t.children.find((c) => c.kind === 'partition' && c.props.queryGroup)?.props.queryGroup, mode: t.children.find((c) => c.kind === 'partition')?.props.mode })));
-  for (const t of objs.filter((o) => o.kind === 'table')) { const rp = t.children.find((c) => c.kind === 'refreshPolicy'); if (rp) pushPolicy(mx, t.name, rp.props); }
+  for (const p of objs.filter((o) => o.kind === 'perspective')) {
+    mx.perspectives.push({ name: p.name, fields: p.children.filter((t) => t.kind === 'perspectiveTable').flatMap((t) => t.children.map((x) => `${t.name}\u0001${x.name}`)) });
+  }
+  for (const t of objs.filter((o) => o.kind === 'table')) {
+    const rp = t.children.find((c) => c.kind === 'refreshPolicy');
+    if (rp) pushPolicy(mx, t.name, rp.props);
+    if (t.description) mx.descriptions[t.name] = t.description;
+    for (const x of t.children.filter((c) => ['column', 'measure', 'hierarchy'].includes(c.kind) && c.description)) mx.descriptions[`${t.name}\u0001${x.name}`] = x.description;
+  }
   pushAggs(mx, objs.filter((o) => o.kind === 'table').flatMap((t) => t.children.filter((c) => c.kind === 'column').flatMap((c) => c.children.filter((a) => a.kind === 'alternateOf').map((a) => {
     const [bt, bc] = a.props.baseColumn ? splitRef(a.props.baseColumn) : [unquote(a.props.baseTable), undefined];
     return { table: t.name, column: c.name, summarization: a.props.summarization, detail: bt, baseColumn: bc };
@@ -338,7 +355,9 @@ function fromTmdl(dir, out) {
     pushCulture(mx, c.name, tables);
   }
   for (const r of objs.filter((o) => o.kind === 'role')) {
-    mx.roles.push({ name: r.name, filters: r.children.filter((p) => p.kind === 'tablePermission' && (p.value ?? '').trim()).map((p) => ({ table: p.name, expression: p.value })) });
+    const perms = r.children.filter((p) => p.kind === 'tablePermission');
+    const hidden = [...perms.filter((p) => p.props.metadataPermission === 'none').map((p) => p.name), ...perms.flatMap((p) => p.children.filter((c) => c.kind === 'columnPermission' && c.props.metadataPermission === 'none').map((c) => `${p.name}\u0001${c.name}`))];
+    mx.roles.push({ name: r.name, filters: perms.filter((p) => (p.value ?? '').trim()).map((p) => ({ table: p.name, expression: p.value })), ...(hidden.length ? { hidden } : {}) });
   }
   for (const r of objs.filter((o) => o.kind === 'relationship')) {
     const [ft, fc] = tableColumn(r.props.fromColumn ?? '');

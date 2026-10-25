@@ -47,6 +47,9 @@ export function DataView() {
               {t.columns.filter((c) => c.name !== col.name).map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
             </select>
           </label>
+          <button className="btn" onClick={() => s.set({ groupDialog: s.report.groupings?.some((g) => g.table === t.name && g.name === col.name) ? { table: t.name, column: col.name, name: col.name } : { table: t.name, column: col.name } })}>
+            <Icon name="tableSmall" size={13} /> Gruppi dati
+          </button>
         </div>
       )}
       <div className="formulabar">

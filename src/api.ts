@@ -32,7 +32,9 @@ export interface PowerBIModel {
     storage?: Record<string, "directQuery" | "dual">;
     aggregations?: import('./types').AggTable[];
     refreshPolicies?: import('./types').RefreshPolicy[];
-    roles: { name: string; filters: { table: string; expression: string }[] }[];
+    descriptions?: Record<string, string>;
+    perspectives?: { name: string; fields: string[] }[];
+    roles: { name: string; filters: { table: string; expression: string }[]; hidden?: string[] }[];
   };
   warnings: string[];
 }

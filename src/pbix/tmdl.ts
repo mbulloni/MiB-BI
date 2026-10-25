@@ -140,7 +140,11 @@ function relationship(r: Obj): string {
 
 function role(r: Obj): string {
   let s = description(r.description, 0) + `role ${tmdlName(r.name)}\n` + props(r, 1, ['tablePermissions', 'members']);
-  for (const p of r.tablePermissions ?? []) s += `\n\ttablePermission ${tmdlName(p.name)}${expr(p.filterExpression, 3)}\n`;
+  for (const p of r.tablePermissions ?? []) {
+    s += `\n\ttablePermission ${tmdlName(p.name)}${p.filterExpression ? expr(p.filterExpression, 3) : ''}\n`;
+    if (p.metadataPermission) s += `\t\tmetadataPermission: ${p.metadataPermission}\n`;
+    for (const c of p.columnPermissions ?? []) s += `\n\t\tcolumnPermission ${tmdlName(c.name)}\n\t\t\tmetadataPermission: ${c.metadataPermission}\n`;
+  }
   return s + annotations(r, 1);
 }
 
@@ -164,6 +168,18 @@ function culture(c: Obj): string {
   return s;
 }
 
+/** perspectives/<name>.tmdl: perspectiveTable › perspectiveColumn / perspectiveMeasure / perspectiveHierarchy. */
+function perspective(p: Obj): string {
+  let s = description(p.description, 0) + `perspective ${tmdlName(p.name)}\n`;
+  for (const t of p.perspectiveTables ?? []) {
+    s += `\n\tperspectiveTable ${tmdlName(t.name)}\n`;
+    for (const [k, list] of [['perspectiveColumn', t.perspectiveColumns], ['perspectiveMeasure', t.perspectiveMeasures], ['perspectiveHierarchy', t.perspectiveHierarchies]] as const) {
+      for (const x of list ?? []) s += `\t\t${k} ${tmdlName(x.name)}\n`;
+    }
+  }
+  return s;
+}
+
 /** File name of a table/role/culture: the object name with characters invalid in file names replaced. */
 const fileName = (n: string) => n.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_');
 
@@ -178,7 +194,7 @@ export function tmslToTmdl(db: Obj): Record<string, string> {
   m += annotations(model, 0);
   for (const g of model.queryGroups ?? []) m += `\nqueryGroup ${tmdlName(g.folder)}\n`;
   const refs = (kind: string, list: Obj[] | undefined) => (list && list.length > 1 ? '\n' + list.map((x) => `ref ${kind} ${tmdlName(x.name)}\n`).join('') : '');
-  m += refs('table', model.tables) + refs('role', model.roles) + refs('cultureInfo', model.cultures);
+  m += refs('table', model.tables) + refs('perspective', model.perspectives) + refs('role', model.roles) + refs('cultureInfo', model.cultures);
   out['model.tmdl'] = m;
 
   for (const t of model.tables ?? []) out[`tables/${fileName(t.name)}.tmdl`] = table(t);
@@ -191,6 +207,7 @@ export function tmslToTmdl(db: Obj): Record<string, string> {
     out['functions.tmdl'] = model.functions.map((f: Obj) =>
       description(f.description, 0) + `function ${tmdlName(f.name)}${expr(f.expression, 2)}\n` + props(f, 1, ['expression']) + annotations(f, 1)).join('\n');
   }
+  for (const p of model.perspectives ?? []) out[`perspectives/${fileName(p.name)}.tmdl`] = perspective(p);
   for (const r of model.roles ?? []) out[`roles/${fileName(r.name)}.tmdl`] = role(r);
   for (const c of model.cultures ?? []) out[`cultures/${fileName(c.name)}.tmdl`] = culture(c);
   return out;
