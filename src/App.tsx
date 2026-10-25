@@ -15,6 +15,7 @@ import { PublishDialog } from './components/PublishDialog';
 import { QnaExplorer } from './qna/QnaExplorer';
 import { OptionsDialog } from './components/OptionsDialog';
 import { ThemeDialog } from './components/ThemeDialog';
+import { checkUpdates, UpdateBanner, UpdateDialog } from './components/Updates';
 import { TranslationsDialog } from './components/TranslationsDialog';
 import { ModelProperties } from './components/ModelProperties';
 import { ServiceDialog } from './components/ServiceDialog';
@@ -46,6 +47,11 @@ const VIEWS: [View, string, string][] = [
   ['model', 'model', 'Vista modello'],
   ['dax', 'dax', 'Vista query DAX'],
 ];
+
+/** Quiet check for a newer release a few seconds after startup. */
+function useUpdateCheck() {
+  useEffect(() => { const t = setTimeout(() => { void checkUpdates(true); }, 4000); return () => clearTimeout(t); }, []);
+}
 
 function useShortcuts() {
   useEffect(() => {
@@ -97,6 +103,7 @@ export function App() {
   const [fit, setFit] = useState(1);
   const onFit = useCallback((n: number) => setFit(n), []);
   useShortcuts();
+  useUpdateCheck();
 
   return (
     <div className={'app' + (s.formatPainter ? ' painting' : '')}>
@@ -105,6 +112,7 @@ export function App() {
         <div className="readbar"><b>Modalità lettura</b><span>I pulsanti e i navigatori rispondono al clic. Esc per tornare alla modifica.</span>
           <button className="btn" onClick={() => s.set({ readMode: false })}>Modifica</button></div>
       ) : <><Ribbon /><DaxBar /></>}
+      <UpdateBanner />
       <ViewAsBar />
       <div className={'main' + (s.readMode ? ' reading' : '')}>
         {!s.readMode && <div className="rail">
@@ -136,6 +144,7 @@ export function App() {
       <QnaExplorer />
       <OptionsDialog />
       <ThemeDialog />
+      <UpdateDialog />
       <TranslationsDialog />
       <ModelProperties />
       <ServiceDialog />
@@ -148,7 +157,7 @@ export function App() {
       <QuickMeasureDialog />
       <EnterDataDialog />
       {s.printing && (
-        <div className="print-root">
+        <div className={'print-root' + (s.printing === 'pptx' ? ' pptx-shot' : '')}>
           {s.report.pages.map((p) => (
             <div key={p.id} className="print-page" style={{ backgroundColor: THEME.background, position: 'relative', width: pageSize(p).w, height: pageSize(p).h }}>
               <PageBackground p={p} />

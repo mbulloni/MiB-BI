@@ -33,6 +33,12 @@ Non è affiliato a Microsoft; nome e logo sono volutamente diversi.
 | **Nuovo calcolo visivo** — anteprima, barra della formula, matrice visiva con i campi nascosti, modelli | **Calcoli visivi nel report** — media mobile su una linea, % del totale e differenza dal precedente, campo nascosto |
 | ![Opzioni calendario](docs/screenshots/calendario.png) | ![Funzioni DAX definite dall'utente](docs/screenshots/funzioni-dax.png) |
 | **Opzioni calendario** — categorie Anno/Trimestre/Mese/Settimana/Data, colonne associate e correlate al tempo | **Funzioni definite dall'utente** e time intelligence a calendario (`TOTALWTD`, `DATEADD` su un calendario) nella Vista query DAX |
+| ![Personalizza tema](docs/screenshots/personalizza-tema.png) | ![Report con un tema personalizzato](docs/screenshots/tema-personalizzato.png) |
+| **Personalizza tema** — colori, testo, oggetti visivi, pagina e riquadro filtri, salvati nel JSON del tema | **Tema personalizzato** — caratteri e colori dei testi, sfondo e bordo degli oggetti visivi, riquadro filtri, colori di sentiment |
+| ![Traduzioni del modello](docs/screenshots/traduzioni.png) | ![Interfaccia in inglese](docs/screenshots/interfaccia-inglese.png) |
+| **Traduzioni del modello** — nomi di tabelle, colonne e misure per lingua, *Traduci con Claude*, anteprima con Visualizza › Lingua | **Interfaccia in inglese** — Opzioni › Impostazioni internazionali › Lingua dell'applicazione |
+| ![Aggiornamento disponibile](docs/screenshots/aggiornamento.png) | |
+| **Aggiornamenti** — avviso di una nuova release su GitHub, novità, download e installazione con riavvio | |
 
 ## Scaricare e installare
 
@@ -247,6 +253,34 @@ Limiti noti: i dataset push non supportano ruoli, gruppi di calcolo e gerarchie 
 errore e della previsione i file Power BI conservano solo aspetto e attivazione (tipo, limiti da campi, lunghezza e
 confidenza restano nel `.mibx`), perché i nomi di quelle proprietà non sono documentati nello schema ufficiale.
 
+### Progetti PBIR/TMDL, temi, lingue, PowerPoint, aggiornamenti
+
+- **Salvataggio PBIR e TMDL** (File › *Salva come progetto Power BI*): il report va nella cartella `X.Report/definition/`
+  (formato avanzato PBIR, un JSON per pagina, oggetto visivo e segnalibro, convalidati con gli schemi JSON pubblicati da
+  Microsoft) e il modello in `X.SemanticModel/definition/` (TMDL: `database.tmdl`, `model.tmdl`, `tables/*.tmdl`,
+  `relationships.tmdl`, `expressions.tmdl`, `functions.tmdl`, `roles/*.tmdl`, `cultures/*.tmdl`). Sono i formati
+  predefiniti di Power BI Desktop; *Opzioni › Progetti di Power BI* torna a `report.json`/`model.bim`. Salvare sopra un
+  progetto esistente rimuove prima le definizioni vecchie. Verificato con tre `.pbix` di esempio Microsoft (335 file PBIR,
+  0 errori di schema) e con l'andata e ritorno di tutte le funzioni di MiB-BI. Writer: `src/pbix/pbir.ts#layoutToPbir`,
+  `src/pbix/tmdl.ts#tmslToTmdl`.
+- **Personalizza tema** (Visualizza › Temi › *Personalizza tema corrente*): nome e colori (colori del tema, di sentiment,
+  divergenti, strutturali), testo (Generale, Titolo, Schede e KPI, Intestazioni: carattere, dimensione, colore), oggetti
+  visivi (sfondo, bordo, intestazione, descrizione comando), pagina (sfondo della pagina e dell'area di disegno) e
+  riquadro filtri. Il tema conserva ogni chiave del JSON di Power BI (`textClasses`, `visualStyles`…) e gli oggetti visivi
+  la usano: assi, legende, etichette, titoli, schede, KPI, tabelle, cascata. Nuovo tema scuro incorporato *Notte*.
+- **Traduzioni del modello** (Modellazione › *Traduzioni*): una colonna per lingua, nome visualizzato, descrizione e
+  cartella di tabelle, colonne, misure e gerarchie; *Traduci con Claude* riempie i valori vuoti (chiave di Opzioni › Domande
+  e risposte). *Visualizza › Lingua del report* mostra il report tradotto (titoli, assi, intestazioni, campi, filtri). Le
+  culture vanno nei `.pbit`/`.pbip` (TMSL e `cultures/*.tmdl`) e nel `.pbix` (`Culture`, `ObjectTranslation`) e seguono
+  le rinomine. I calcoli visivi usano sempre i nomi non tradotti.
+- **Interfaccia in inglese** (Opzioni › Impostazioni internazionali › *Lingua dell'applicazione*): dizionario
+  `src/i18n/en.json` (≈1.800 testi ricavati dal codice) applicato all'interfaccia da `src/i18n.ts` (testi, descrizioni
+  comando, segnaposto; mai il testo digitato né gli editor), anche nei grafici e nei filtri dei file.
+- **Esporta in PowerPoint** (File): una diapositiva 16:9 per pagina con la pagina come immagine (`electron/pptx.cjs`).
+- **Aggiornamenti**: all'avvio (al massimo ogni 12 ore) MiB-BI controlla l'ultima release su GitHub e mostra un avviso
+  sotto la barra multifunzione; *Novità e aggiornamento…* mostra le note, scarica e installa la nuova versione (AppImage
+  sostituito, `.deb` con apt) e riavvia. *Più tardi*, *Salta questa versione*; Guida › *Controlla aggiornamenti*.
+
 ## File Power BI
 
 | Operazione | Supporto |
@@ -255,7 +289,7 @@ confidenza restano nel `.mibx`), perché i nomi di quelle proprietà non sono do
 | **Aprire `.pbit`** | Sì: schema, misure, relazioni e report. I dati vengono ricaricati se la query M punta a un file locale, altrimenti le tabelle restano vuote. |
 | **Aprire `.pbip`** | Sì (progetto Power BI, cartelle di testo): report legacy (`report.json`) o **PBIR** (`definition/pages/…/visual.json`), modello TMSL (`model.bim`) o **TMDL** (`definition/*.tmdl`), colonne e tabelle calcolate. I dati vengono caricati dalle query M che puntano a file locali. Lettore in `electron/pbip.cjs`, conversione PBIR → layout in `src/pbix/pbir.ts`. |
 | **Aprire `.pbix` PBIR** | Sì: i report salvati nel nuovo formato PBIR dentro il `.pbix` vengono convertiti come sopra. |
-| **Salvare `.pbip`** | Sì (File › Salva come progetto Power BI): `X.pbip`, `X.Report/report.json`, `X.SemanticModel/model.bim`, risorse e tema; file di testo adatti a git. |
+| **Salvare `.pbip`** | Sì (File › Salva come progetto Power BI): `X.pbip`, report **PBIR** (`X.Report/definition/…`) e modello **TMDL** (`X.SemanticModel/definition/…`), oppure `report.json` + `model.bim` (Opzioni › Progetti di Power BI); risorse e tema; file di testo adatti a git. |
 | **Salvare `.pbit`** | Sì (File › Esporta modello Power BI): modello TOM, query M per ogni tabella, misure, relazioni, layout e immagini. Power BI Desktop ricarica i dati dalle origini, poi si salva come `.pbix`. |
 | **Salvare `.pbix`** | Sì (File › *Salva come file Power BI (.pbix)*; *Salva* su un report aperto da `.pbix`): report, modello e **dati**, apribile in Power BI Desktop senza aggiornare. Vedi *Writer `.pbix`* sotto. |
 | **Aprire `.pbix` recenti** | Sì: i file salvati dalle versioni recenti di Power BI Desktop (colonne in formato `.idfx`) e quelli scritti da MiB-BI. |
@@ -469,7 +503,8 @@ Fabric, PDF, `.mibx` con i dati.
 Fasi **1–12 completate**: interfaccia e report, Power Query, relazioni, DAX, file Power BI, connettori database, oggetti visivi e
 IA, interattività, Power Query avanzato, modello/DAX, pubblicazione e servizio Power BI. Poi: modifica interazioni, nuovi
 filtri dei dati, esportazione dati (1.5), tema scuro (1.6), calcoli visivi, funzioni DAX definite dall'utente e time
-intelligence a calendario.
+intelligence a calendario (1.7), salvataggio PBIR/TMDL, Personalizza tema, traduzioni del modello, interfaccia in
+inglese, esportazione PowerPoint e avviso di aggiornamento (1.8).
 
 **Da verificare** (implementato, provato solo con file di prova o server finti):
 - servizio Power BI su un tenant reale: accesso, aree di lavoro, pubblicazione, download dei report, lettura dei
@@ -480,7 +515,9 @@ intelligence a calendario.
 - in Power BI Desktop reale: filtri dei dati Data relativa (il periodo è scritto come filtro calcolato al salvataggio
   più le impostazioni `relativeRange/Duration/Period`) e filtro dei dati di testo esportati;
 - in Power BI Desktop reale: funzioni definite dall'utente, calendari e calcoli visivi scritti nei file (`.pbit`/`.pbip`
-  con livello di compatibilità 1701/1702, righe `Function`/`Calendar` del `.pbix`).
+  con livello di compatibilità 1701/1702, righe `Function`/`Calendar` del `.pbix`);
+- in Power BI Desktop reale: progetti PBIR/TMDL salvati da MiB-BI (convalidati solo con gli schemi JSON e il lettore di
+  MiB-BI) e traduzioni (`Culture`/`ObjectTranslation` nel `.pbix`).
 
 **Limiti noti**:
 - dataset push senza ruoli, gruppi di calcolo e gerarchie (limite delle API Power BI);
@@ -490,7 +527,10 @@ intelligence a calendario.
 - calcoli visivi: niente ricalcolo nell'evidenziazione incrociata, niente `ROWNUMBER`/`RANK`/`INDEX`/`OFFSET`/`WINDOW` con
   assi; totali personalizzati solo nel `.mibx`.
 
-**Possibili prossimi passi**: scrittura PBIR/TMDL, temi scuri (colori del testo), esportazione PowerPoint.
+- interfaccia inglese: i messaggi di errore generati nel processo principale (lettura file, connettori) restano in
+  italiano; i totali personalizzati non vanno nel PBIR (lo schema li prevede come calcoli visivi con metadati non documentati).
+
+**Possibili prossimi passi**: linguaggio M completo, modelli compositi/DirectQuery, Copilot con Claude.
 
 ## Test di fumo
 

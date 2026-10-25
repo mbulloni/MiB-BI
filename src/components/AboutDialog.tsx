@@ -1,6 +1,7 @@
 // Guida › Informazioni: application icon, name, version and credits.
 import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { checkUpdates } from './Updates';
 import { useStore } from '../store';
 import { Icon } from './icons';
 import logo from '../assets/logo-256.png';
@@ -20,7 +21,7 @@ export function AboutDialog() {
           <img src={logo} width={112} height={112} alt="MiB-BI" draggable={false} />
           <div>
             <div className="about-name">MiB-BI</div>
-            <div className="about-ver">Versione {version}</div>
+            <div className="about-ver">Versione {version} · <button className="link" onClick={() => checkUpdates(false)}>Controlla aggiornamenti</button></div>
             <p>Clone educativo di Power BI Desktop per Linux. Non affiliato a Microsoft.</p>
             <p>Motore: DuckDB · Grafici: Apache ECharts · Interfaccia: Electron e React.</p>
             <p><a href="#" onClick={(e) => { e.preventDefault(); api.openExternal('https://github.com/mbulloni/MiB-BI'); }}>github.com/mbulloni/MiB-BI</a> · Licenza MIT</p>

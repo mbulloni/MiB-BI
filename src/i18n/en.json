@@ -1,5 +1,6 @@
 {
 "exact": {
+" Il report ha modifiche non salvate.": " The report has unsaved changes.",
 "\" non supportata.": "\" isn't supported.",
 "% dei dati).": "% of the data).",
 "% del totale complessivo": "% of grand total",
@@ -63,7 +64,10 @@
 "Aggiorna dati": "Refresh data",
 "Aggiorna il modello": "Update model",
 "Aggiorna oggetti visivi": "Refresh visuals",
+"Aggiorna ora": "Update now",
+"Aggiornamenti": "Updates",
 "Aggiornamento in corso…": "Refreshing…",
+"Aggiornamento installato: riavvia MiB-BI per usare la nuova versione.": "Update installed: restart MiB-BI to use the new version.",
 "Aggiornamento non riuscito:": "Refresh failed:",
 "Aggiungere almeno un campo.": "Add at least one field.",
 "Aggiungere dati al report": "Add data to your report",
@@ -250,6 +254,7 @@
 "Cerca": "Search",
 "Cerca aree di lavoro": "Search workspaces",
 "Cerca colonne": "Search columns",
+"Cerca una nuova versione di MiB-BI su GitHub": "Look for a new version of MiB-BI on GitHub",
 "Che cosa influenza": "What influences",
 "Che cosa verrà modificato?": "What will be changed?",
 "Chiaro": "Light",
@@ -329,10 +334,14 @@
 "Continuo": "Solid",
 "Contrassegna come": "Mark as",
 "Contrassegna come tabella delle date": "Mark as date table",
+"Controlla aggiornamenti": "Check for updates",
+"Controlla aggiornamenti all'avvio (GitHub, nessun dato inviato)": "Check for updates at startup (GitHub, no data sent)",
+"Controlla gli aggiornamenti all'avvio (GitHub, nessun dato inviato)": "Check for updates at startup (GitHub, no data sent)",
 "Convalida dati": "Validate data",
 "Copia": "Copy",
 "Copia formato": "Format painter",
 "Copia formato (attivo)": "Format painter (on)",
+"Copia non installata da AppImage o .deb: verrà aperta la pagina della release.": "Copy not installed from an AppImage or .deb: the release page will open.",
 "Copia non riuscita.": "Copy failed.",
 "Copia query": "Copy query",
 "Copiare qui": "Copy here",
@@ -499,11 +508,14 @@
 "Esporta dati": "Export data",
 "Esporta i dati usati nell'oggetto visivo, con i filtri applicati.": "Exports the data used in the visual, with the filters applied.",
 "Esporta in PDF": "Export to PDF",
+"Esporta in PowerPoint": "Export to PowerPoint",
 "Esporta le righe delle tabelle da cui l'oggetto visivo calcola i valori (.xlsx). Disponibile quando l'oggetto visivo aggrega dati.": "Exports the rows of the tables the visual computes its values from (.xlsx). Available when the visual aggregates data.",
 "Esporta modello Power BI (.pbit)": "Export Power BI template (.pbit)",
 "Esporta progetto Power BI (.pbip)": "Export Power BI project (.pbip)",
 "Esportazione PDF non riuscita:": "PDF export failed:",
+"Esportazione PowerPoint non riuscita:": "PowerPoint export failed:",
 "Esportazione in PDF…": "Exporting to PDF…",
+"Esportazione in PowerPoint…": "Exporting to PowerPoint…",
 "Esportazione non riuscita:": "Export failed:",
 "Espressione DAX valutata riga per riga: le righe per cui è TRUE sono visibili ai membri del ruolo (es.": "DAX expression evaluated row by row: rows where it's TRUE are visible to the members of the role (e.g.",
 "Espressione di tabella attesa": "Table expression expected",
@@ -686,6 +698,7 @@
 "Inserisci colonna": "Insert column",
 "Inserisci oggetto visivo": "Insert visual",
 "Inserisci riga": "Insert row",
+"Installazione…": "Installing…",
 "Interagire con il report o fare clic su Aggiorna oggetti visivi.": "Interact with the report or click Refresh visuals.",
 "Interazioni": "Interactions",
 "Interazioni oggetto visivo": "Visual interactions",
@@ -880,6 +893,7 @@
 "Navigatore segnalibri": "Bookmark navigator",
 "Negativo": "Negative",
 "Nel browser aperto su": "In the browser opened at",
+"Nessun aggiornamento da installare.": "No update to install.",
 "Nessun calendario definito per questa tabella.": "No calendar defined for this table.",
 "Nessun campo del modello riconosciuto nella domanda.": "No model field recognized in the question.",
 "Nessun campo: aggiungerne almeno uno.": "No fields: add at least one.",
@@ -944,6 +958,8 @@
 "Non sono state definite relazioni.": "No relationships defined.",
 "Norvegese (Norvegia)": "Norwegian (Norway)",
 "Notte": "Night",
+"Novità": "What's new",
+"Novità e aggiornamento…": "What's new and update…",
 "Numero decimale": "Decimal number",
 "Numero di deviazioni standard": "Number of standard deviations",
 "Numero di righe": "Number of rows",
@@ -1026,6 +1042,7 @@
 "Pagina 1": "Page 1",
 "Pagina corrente": "Current page",
 "Pagina del report:": "Report page:",
+"Pagina della release": "Release page",
 "Pagina nascosta": "Hidden page",
 "Pagina vuota": "Blank page",
 "Pagina «": "Page «",
@@ -1050,6 +1067,7 @@
 "Personalizza tema": "Customize theme",
 "Personalizza tema corrente": "Customize current theme",
 "Personalizzato": "Custom",
+"Più tardi": "Later",
 "Polacco (Polonia)": "Polish (Poland)",
 "Porre una domanda sui dati": "Ask a question about your data",
 "Porta": "Port",
@@ -1106,6 +1124,7 @@
 "Query rapide › Definisci tutte le funzioni del modello": "Quick queries › Define all model functions",
 "Query rapide › Valuta": "Quick queries › Evaluate",
 "Query unite": "Merged queries",
+"Questa copia non è un AppImage né un pacchetto .deb: si è aperta la pagina della release per scaricarla.": "This copy is neither an AppImage nor a .deb package: the release page opened to download it.",
 "Questa relazione esiste già.": "This relationship already exists.",
 "Questo": "This",
 "Questo oggetto visivo non supporta i calcoli visivi.": "This visual doesn't support visual calculations.",
@@ -1124,6 +1143,8 @@
 "Rendi attiva questa relazione": "Make this relationship active",
 "Report vuoto": "Blank report",
 "Report: scaricato come .pbix (pagine, modello e dati), se il download è consentito. Modello semantico: tabelle, relazioni e misure lette con query DAX (max 100.000 righe per tabella), senza pagine.": "Report: downloaded as .pbix (pages, model and data), when download is allowed. Semantic model: tables, relationships and measures read with DAX queries (max 100,000 rows per table), without pages.",
+"Riavvia ora": "Restart now",
+"Riavvia senza salvare": "Restart without saving",
 "Ricerca dei segmenti…": "Searching for segments…",
 "Ricerca delle aree di lavoro…": "Looking up workspaces…",
 "Richiede un asse X continuo (data o numero) e una sola misura.": "Requires a continuous X axis (date or number) and a single measure.",
@@ -1199,11 +1220,13 @@
 "SELECTCOLUMNS: atteso \"Nome\", espressione": "SELECTCOLUMNS: expected \"Name\", expression",
 "SELECTEDMEASURE si può usare solo negli elementi di calcolo": "SELECTEDMEASURE can only be used in calculation items",
 "SQL generato (DuckDB)": "Generated SQL (DuckDB)",
+"Salta questa versione": "Skip this version",
 "Salva": "Save",
 "Salva (Ctrl+S)": "Save (Ctrl+S)",
 "Salva come file Power BI (.pbix)": "Save as Power BI file (.pbix)",
 "Salva come progetto Power BI (.pbip)": "Save as Power BI project (.pbip)",
 "Salva con nome": "Save as",
+"Salva e riavvia": "Save and restart",
 "Salva i report nel formato avanzato PBIR (un file JSON per pagina, oggetto visivo e segnalibro)": "Save reports in the enhanced PBIR format (one JSON file per page, visual and bookmark)",
 "Salva il modello semantico in TMDL (un file di testo per tabella, ruolo e lingua)": "Save the semantic model as TMDL (one text file per table, role and language)",
 "Salva nel modello le misure e le funzioni definite nella query (DEFINE MEASURE / DEFINE FUNCTION)": "Save the measures and functions defined in the query to the model (DEFINE MEASURE / DEFINE FUNCTION)",
@@ -1394,6 +1417,7 @@
 "Traduzioni": "Translations",
 "Traduzioni del modello": "Model translations",
 "Traduzioni rimosse.": "Translations removed.",
+"Traduzioni…": "Translations…",
 "Tramonto": "Sunset",
 "Trascinare una colonna su un'altra tabella per creare una relazione": "Drag a column onto another table to create a relationship",
 "Trasforma": "Transform",
@@ -1546,6 +1570,8 @@
 "la tabella da unire": "the table to merge",
 "lavoro di Excel": "workbook",
 "li elenca).": "lists them).",
+"lingua": "language",
+"lingue": "languages",
 "medio è": "average is",
 "misura": "measure",
 "modello .pbit": ".pbit template",
@@ -1612,6 +1638,66 @@
 "✓ Verifica DAX": "✓ Check DAX"
 },
 "patterns": [
+[
+"È disponibile MiB-BI {}",
+"MiB-BI {} is available"
+],
+[
+"(installata {})",
+"(installed {})"
+],
+[
+"Aggiornamento a MiB-BI {}",
+"Update to MiB-BI {}"
+],
+[
+"Hai già l'ultima versione ({}).",
+"You already have the latest version ({})."
+],
+[
+"Versione installata {} · nuova {}{}",
+"Installed version {} · new {}{}"
+],
+[
+"Download {} / {} MB",
+"Download {} / {} MB"
+],
+[
+"Verrà scaricato {} ({} MB) e sostituito l'AppImage in uso; poi MiB-BI si riavvia.",
+"{} ({} MB) will be downloaded and replace the AppImage in use; then MiB-BI restarts."
+],
+[
+"Verrà scaricato {} ({} MB) e installato con apt: il sistema chiede la password di amministratore.",
+"{} ({} MB) will be downloaded and installed with apt: the system asks for the administrator password."
+],
+[
+"Installazione automatica non riuscita: si è aperto il programma di installazione del sistema con il file {}.",
+"Automatic installation failed: the system installer opened with the file {}."
+],
+[
+"Esportato {} ({} diapositive, una per pagina).",
+"Exported {} ({} slides, one per page)."
+],
+[
+"Esportato {} ({} diapositiva, una per pagina).",
+"Exported {} ({} slide, one per page)."
+],
+[
+"Progetto salvato: {} con le cartelle .Report ({}) e .SemanticModel ({}), file di testo adatti a git.",
+"Project saved: {} with the .Report ({}) and .SemanticModel ({}) folders, text files suited to git."
+],
+[
+"Traduzioni salvate per {} {}: vengono scritte nei file .pbix, .pbit e .pbip.",
+"Translations saved for {} {}: they are written to .pbix, .pbit and .pbip files."
+],
+[
+"{} valori tradotti in {} con Claude: controllarli prima di applicare.",
+"{} values translated into {} with Claude: check them before applying."
+],
+[
+"Versione {} · ",
+"Version {} · "
+],
 [
 "{} COLONNE, {} RIGHE",
 "{} COLUMNS, {} ROWS"

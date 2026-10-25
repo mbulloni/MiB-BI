@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { globalOptions } from './options';
-import { api } from './api';
+import { api, type UpdateInfo } from './api';
 import type { Bookmark, CrossFilter, DbConnection, FieldRef, Filter, Interaction, NewStep, Page, PQType, Relationship, Report, Step, Theme, TableMeta, View, Visual, VisualFormat, VisualType } from './types';
 import { interactionKey } from './visuals/interactions';
 import { propagateSync } from './visuals/sync';
@@ -295,8 +295,10 @@ interface State {
   deleteCalcColumn: (table: string, name: string) => Promise<void>;
   finalizeModel: () => Promise<void>;
   setTheme: (t: Theme | undefined) => void;
-  printing: boolean;
+  /** All pages laid out for export: true = PDF (print), 'pptx' = PowerPoint (one page shown at a time and captured). */
+  printing: boolean | 'pptx';
   exportPdf: () => Promise<void>;
+  exportPptx: () => Promise<void>;
   importTheme: () => Promise<void>;
   exportTheme: () => Promise<void>;
 
@@ -309,6 +311,10 @@ interface State {
   optionsDialog: boolean;
   /** Visualizza › Temi › Personalizza tema corrente. */
   themeDialog: boolean;
+  /** Newer release on GitHub (components/Updates.tsx), its dialog and the error of a manual check. */
+  update: UpdateInfo | null;
+  updateDialog: boolean;
+  updateError: string | null;
   /** Modellazione › Traduzioni. */
   translationsDialog: boolean;
   /** Language previewed in the report (model translations), null = the model's own names. Not saved. */
@@ -827,6 +833,37 @@ export const useStore = create<State>((set, get) => {
     daxQueryText: '',
 
     printing: false,
+    exportPptx: async () => {
+      const { filePath, sourceName } = get();
+      const base = (filePath?.split('/').pop() ?? sourceName ?? 'Report').replace(/\.(mibx|pbix|pbit|pbip)$/i, '');
+      set({ fileMenu: false, crossFilter: null, printing: 'pptx', busy: 'Esportazione in PowerPoint…' });
+      try {
+        const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+        await wait(400);
+        for (let t = 0; t < 30000 && pendingQueries() > 0; t += 100) await wait(100);
+        await wait(700); // chart animations
+        set({ busy: null });
+        await wait(150);
+        const root = document.querySelector('.print-root') as HTMLElement;
+        const els = [...root.querySelectorAll<HTMLElement>('.print-page')];
+        const slides: { name: string; png: string; w: number; h: number }[] = [];
+        for (const [i, el] of els.entries()) {
+          // The page at the window's top-left corner, scaled down when the window is smaller.
+          const w = el.offsetWidth, h = el.offsetHeight;
+          const k = Math.min(1, window.innerWidth / w, window.innerHeight / h);
+          root.style.transform = `translate(0px, ${-el.offsetTop * k}px) scale(${k})`;
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          await wait(60);
+          slides.push({ name: get().report.pages[i]?.name ?? `Pagina ${i + 1}`, png: await api.capture({ x: 0, y: 0, width: Math.floor(w * k), height: Math.floor(h * k) }), w, h });
+        }
+        const out = await api.savePptx(slides, base + '.pptx');
+        if (out) get().notify(`Esportato ${out.split('/').pop()} (${slides.length} ${slides.length === 1 ? 'diapositiva' : 'diapositive'}, una per pagina).`);
+      } catch (e: any) {
+        get().notify('Esportazione PowerPoint non riuscita: ' + e.message);
+      } finally {
+        set({ printing: false, busy: null });
+      }
+    },
     exportPdf: async () => {
       const { filePath, sourceName } = get();
       const base = (filePath?.split('/').pop() ?? sourceName ?? 'Report').replace(/\.(mibx|pbix|pbit|pbip)$/i, '');
@@ -1282,6 +1319,9 @@ export const useStore = create<State>((set, get) => {
     qnaExplorer: false,
     optionsDialog: false,
     themeDialog: false,
+    update: null,
+    updateDialog: false,
+    updateError: null,
     translationsDialog: false,
     previewCulture: null,
     setSlicer: (id, values) => {

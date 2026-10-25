@@ -163,6 +163,7 @@ const FILTERS = {
   pbix: [{ name: 'File di Power BI', extensions: ['pbix'] }],
   theme: [{ name: 'File di tema JSON', extensions: ['json'] }],
   pdf: [{ name: 'PDF', extensions: ['pdf'] }],
+  pptx: [{ name: 'Presentazione di PowerPoint', extensions: ['pptx'] }],
   pbiviz: [{ name: 'Oggetto visivo di Power BI', extensions: ['pbiviz'] }],
 };
 
@@ -171,7 +172,7 @@ const FILTER_EN = {
   'Testo/CSV': 'Text/CSV', 'Cartella di lavoro di Excel': 'Excel workbook', 'Database SQLite': 'SQLite database', 'Database di Access': 'Access database',
   'Chiave (JSON, PEM, P8)': 'Key (JSON, PEM, P8)', 'Tutti i file di dati': 'All data files', 'File MiB-BI': 'MiB-BI file', 'Report (MiB-BI, Power BI)': 'Report (MiB-BI, Power BI)',
   'File Power BI': 'Power BI file', 'Progetto di Power BI': 'Power BI project', 'Modello di Power BI': 'Power BI template', 'File di Power BI': 'Power BI file',
-  'File di tema JSON': 'JSON theme file', 'Oggetto visivo di Power BI': 'Power BI visual',
+  'File di tema JSON': 'JSON theme file', 'Presentazione di PowerPoint': 'PowerPoint presentation', 'Oggetto visivo di Power BI': 'Power BI visual',
 };
 for (const list of Object.values(FILTERS)) for (const f of list) f.it = f.name;
 ipcMain.on('ui:lang', (_e, lang) => {
@@ -390,6 +391,23 @@ handle('pbip:save', async (parts, suggested) => {
   const base = path.basename(target, path.extname(target));
   const sub = (s) => s.split('__BASE__').join(base);
   return pbip.write(target, parts.map((p) => ({ ...p, path: sub(p.path), ...(p.text !== undefined ? { text: sub(p.text) } : {}) })));
+});
+
+// Updates from the GitHub releases (same as MiB-SQL): check, download + install (AppImage / .deb), restart.
+const updates = require('./updates.cjs');
+handle('update:check', () => updates.check());
+handle('update:install', () => updates.install((p) => win.webContents.send('update:progress', p)));
+handle('update:restart', () => updates.restart());
+
+// PowerPoint export: the renderer shows one page at a time at the window's top-left corner, main captures it.
+handle('win:capture', async (rect) => (await win.webContents.capturePage(rect)).toPNG().toString('base64'));
+handle('pptx:save', async (slides, suggested) => {
+  const r = process.env.MIBBI_PPTX_OUT ? { canceled: false, filePath: process.env.MIBBI_PPTX_OUT }
+    : await dialog.showSaveDialog(win, { defaultPath: suggested || 'Report.pptx', filters: FILTERS.pptx });
+  if (r.canceled) return null;
+  const target = r.filePath.toLowerCase().endsWith('.pptx') ? r.filePath : r.filePath + '.pptx';
+  fs.writeFileSync(target, await require('./pptx.cjs').build(slides, path.basename(target, '.pptx')));
+  return target;
 });
 
 // PDF export: the renderer lays out every page (print CSS, 1280×720 each) and Chromium prints it.

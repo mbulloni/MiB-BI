@@ -601,6 +601,8 @@ thead .pq-rn { z-index: 2; }
 
 /* ---------- PDF export (phase 6) ---------- */
 .print-root { position: fixed; left: 0; top: 0; transform: translateX(-300vw); pointer-events: none; }
+/* PowerPoint export: pages captured one by one from the window's top-left corner (transform set by exportPptx). */
+.print-root.pptx-shot { transform: none; transform-origin: 0 0; z-index: 100000; }
 .print-page { width: 1280px; height: 720px; position: relative; overflow: hidden; background: var(--bg); break-after: page; }
 .print-vc { position: absolute; display: flex; flex-direction: column; overflow: hidden; }
 @page { size: 1280px 720px; margin: 0; }
@@ -1046,3 +1048,23 @@ thead .pq-rn { z-index: 2; }
 .vc-edit th .vc-eye:hover { color: var(--text); }
 .vc-edit .vc-hidden { color: var(--text2); font-style: italic; }
 .pill.hidden-field .nm { color: var(--text2); font-style: italic; }
+
+/* New release on GitHub (components/Updates.tsx) */
+.update-banner { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--sel-bg, #DEECF9); border-bottom: 1px solid var(--line); font-size: 12px; color: var(--text); }
+.update-banner .muted { color: var(--text2); }
+.update-banner .btn { height: 26px; min-width: 0; padding: 0 10px; }
+.update-dlg { width: min(640px, 94vw); max-height: 86vh; display: flex; flex-direction: column; }
+.update-dlg .db { padding: 0 24px; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+.update-dlg h3 { margin: 6px 0 0; font-size: 14px; }
+.release-notes { border: 1px solid var(--line); background: var(--bg2); padding: 8px 12px; max-height: 300px; overflow: auto; font-size: 12px; }
+.release-notes p { margin: 4px 0; }
+.release-notes .rn-h { display: block; margin: 8px 0 2px; }
+.release-notes .rn-li { margin: 2px 0 2px 6px; }
+.release-notes pre { background: var(--bg); padding: 6px; overflow: auto; }
+.upd-note { margin: 0; color: var(--text2); font-size: 12px; }
+.upd-status { padding: 6px 8px; font-size: 12px; }
+.upd-status.ok { color: var(--ok-text); }
+.upd-status.err { background: var(--err-bg); color: var(--err-text); }
+.upd-progress { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.upd-progress progress { width: 100%; }
+.upd-auto { display: flex; align-items: center; gap: 6px; font-size: 12px; margin: 4px 0 8px; }

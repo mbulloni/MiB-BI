@@ -83,6 +83,16 @@ interface Api {
   savePbit(parts: PbitPart[], suggested?: string): Promise<string | null>;
   savePbix(parts: PbitPart[], schema: unknown, extra: { monthNames: string[]; quarterPrefix: string }, suggested?: string, target?: string): Promise<string | null>;
   printPdf(suggested?: string): Promise<string | null>;
+  /** Releases on GitHub (electron/updates.cjs). */
+  update: {
+    check(): Promise<UpdateInfo>;
+    install(): Promise<{ done: boolean; restart?: boolean; version?: string; reason?: 'current' | 'manual' | 'installer'; file?: string }>;
+    restart(): Promise<void>;
+    onProgress(cb: (p: { bytes?: number; total?: number; phase?: string }) => void): () => void;
+  };
+  /** PNG (base64) of a region of the window, in CSS pixels. */
+  capture(rect: { x: number; y: number; width: number; height: number }): Promise<string>;
+  savePptx(slides: { name: string; png: string; w: number; h: number }[], suggested?: string): Promise<string | null>;
   appVersion(): Promise<string>;
   exportData(name: string, columns: { name: string; kind: 'number' | 'date' | 'text' }[], rows: unknown[][], format: 'xlsx' | 'csv'): Promise<string | null>;
   savePbip(parts: { path: string; text?: string; dataUrl?: string }[], suggested?: string): Promise<string | null>;
@@ -157,3 +167,9 @@ declare global {
 }
 
 export const api = window.api;
+
+/** Latest GitHub release compared with the running version; `mode` = how this copy was installed. */
+export interface UpdateInfo {
+  current: string; latest: string; newer: boolean; notes: string; url: string; published: string | null;
+  mode: 'appimage' | 'deb' | 'manual'; asset: { name: string; url: string; size: number } | null;
+}

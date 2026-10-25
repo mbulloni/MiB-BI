@@ -7,6 +7,7 @@ import { Menu } from './Menu';
 import { VISUALS } from '../visuals/catalog';
 import { THEMES } from '../themes';
 import { cultureName } from './TranslationsDialog';
+import { checkUpdates } from './Updates';
 import type { SensitivityLabel, Theme } from '../types';
 import { api } from '../api';
 
@@ -259,6 +260,7 @@ export function Ribbon() {
           <Group label="Guida">
             <Big icon="info" label="Informazioni" onClick={() => s.set({ aboutDialog: true })} />
             <Big icon="docs" label="Documentazione" onClick={() => s.notify('Leggere README.md nella cartella del progetto.')} />
+            <Big icon="refresh" label={<>Controlla<br />aggiornamenti</>} onClick={() => checkUpdates(false)} title="Cerca una nuova versione di MiB-BI su GitHub" />
           </Group>
         </>}
       </div>
