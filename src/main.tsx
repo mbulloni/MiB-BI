@@ -37,3 +37,5 @@ import { interactionOf } from './visuals/interactions';
 import { buildLayout, parseLayout } from './pbix/layout';
 (window as any).__mibbiLayout = { buildLayout, parseLayout };
 (window as any).__mibbiLang = setUiLang;
+import { evaluateM } from './pq/m/host';
+(window as any).__mibbiM = { evaluateM };

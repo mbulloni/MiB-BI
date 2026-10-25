@@ -37,6 +37,15 @@ contextBridge.exposeInMainWorld('api', {
   savePbix: (parts, schema, extra, suggested, target) => call('pbix:save', parts, schema, extra, suggested, target),
   printPdf: (suggested) => call('pdf:print', suggested),
   capture: (rect) => call('win:capture', rect),
+  m: {
+    sql: (sql, limit) => call('m:sql', sql, limit),
+    file: (p) => call('m:file', p),
+    head: (p, n) => call('m:head', p, n),
+    folder: (p, recursive) => call('m:folder', p, recursive),
+    web: (url, opts) => call('m:web', url, opts),
+    xlsxSheets: (p) => call('m:xlsxSheets', p),
+    load: (table, columns, rows) => call('m:load', table, columns, rows),
+  },
   update: {
     check: () => call('update:check'),
     install: () => call('update:install'),

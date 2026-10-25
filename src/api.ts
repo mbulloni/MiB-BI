@@ -83,6 +83,16 @@ interface Api {
   savePbit(parts: PbitPart[], suggested?: string): Promise<string | null>;
   savePbix(parts: PbitPart[], schema: unknown, extra: { monthNames: string[]; quarterPrefix: string }, suggested?: string, target?: string): Promise<string | null>;
   printPdf(suggested?: string): Promise<string | null>;
+  /** Power Query M interpreter data access (electron/mhost.cjs). */
+  m: {
+    sql(sql: string, limit?: number): Promise<{ columns: { name: string; type: string }[]; rows: unknown[][] }>;
+    file(path: string): Promise<Uint8Array>;
+    head(path: string, bytes: number): Promise<Uint8Array>;
+    folder(path: string, recursive: boolean): Promise<{ name: string; path: string; folder: string; ext?: string; dir?: boolean; size: number; atime: number; mtime: number; ctime: number; hidden: boolean }[]>;
+    web(url: string, opts: Record<string, unknown>): Promise<{ path: string; contentType: string }>;
+    xlsxSheets(path: string): Promise<{ name: string; hidden: boolean }[]>;
+    load(table: string, columns: { name: string; kind: string }[], rows: unknown[][]): Promise<{ name: string; rowCount: number; columns: ColumnMeta[] }>;
+  };
   /** Releases on GitHub (electron/updates.cjs). */
   update: {
     check(): Promise<UpdateInfo>;

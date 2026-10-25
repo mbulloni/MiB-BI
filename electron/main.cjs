@@ -393,6 +393,16 @@ handle('pbip:save', async (parts, suggested) => {
   return pbip.write(target, parts.map((p) => ({ ...p, path: sub(p.path), ...(p.text !== undefined ? { text: sub(p.text) } : {}) })));
 });
 
+// Power Query M interpreter: data access (src/pq/m/host.ts).
+const mhost = require('./mhost.cjs');
+handle('m:sql', (sql, limit) => mhost.sql(sql, limit));
+handle('m:file', (p) => mhost.file(p));
+handle('m:head', (p, n) => mhost.head(p, n));
+handle('m:folder', (p, recursive) => mhost.folder(p, recursive));
+handle('m:web', (url, opts) => mhost.web(url, opts));
+handle('m:xlsxSheets', (p) => mhost.xlsxSheets(p));
+handle('m:load', (table, columns, rows) => mhost.load(table, columns, rows));
+
 // Updates from the GitHub releases (same as MiB-SQL): check, download + install (AppImage / .deb), restart.
 const updates = require('./updates.cjs');
 handle('update:check', () => updates.check());

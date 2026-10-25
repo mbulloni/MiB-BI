@@ -41,6 +41,16 @@ async function sourceExpr(file, sheet) {
   return sheet ? `read_xlsx(${ql(file)}, sheet = ${ql(sheet)})` : `read_xlsx(${ql(file)})`;
 }
 
+/** Result reader (column names/types + rows) for callers that need the DuckDB types (M interpreter). */
+async function raw(sql) {
+  const c = await connection();
+  return c.runAndReadAll(sql);
+}
+async function run(sql) {
+  const c = await connection();
+  await c.run(sql);
+}
+
 async function query(sql) {
   const c = await connection();
   const reader = await c.runAndReadAll(sql);
@@ -162,4 +172,4 @@ function inlineExpr(inline) {
   return `(SELECT * FROM (VALUES ${inline.rows.map((r) => `(${inline.columns.map((_, i) => val(r[i])).join(', ')})`).join(', ')}) AS t(${cols.join(', ')}))`;
 }
 
-module.exports = { query, queryAs, setRole, preview, importFile, materialize, sourceExpr, inlineExpr, addCalcColumn, dropColumn, describe, exportParquet, dropTable, createEmpty, kindOf };
+module.exports = { raw, run, query, queryAs, setRole, preview, importFile, materialize, sourceExpr, inlineExpr, addCalcColumn, dropColumn, describe, exportParquet, dropTable, createEmpty, kindOf };
