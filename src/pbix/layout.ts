@@ -4,7 +4,7 @@
  * singleVisual { visualType, projections, prototypeQuery, objects, vcObjects }.
  */
 import { levelName, type Agg, type Bookmark, type FieldRef, type Filter, type Hierarchy, type Page, type TableMeta, type Theme, type Visual, type VisualFormat, type VisualGroup, type VisualType, type Interaction, type RelativeSlicer } from '../types';
-import { parseTheme, themeJson } from '../themes';
+import { parseTheme, THEME, themeJson } from '../themes';
 import { defaultFormat, PAGE_H, PAGE_W } from '../store';
 import { customPkg, isChart as isChartType, visualDef } from '../visuals/catalog';
 import { NULL_KEY, relativePeriod, type RangeCond } from '../query';
@@ -625,7 +625,7 @@ export function buildLayout(pages: Page[], reportFilters: Filter[], theme?: Them
       if (fm.background === 'transparent') put(vcObjects, 'background', { show: L('false') });
       else put(vcObjects, 'background', { show: L('true'), color: color(fm.background), transparency: L(`${fm.bgTransparency ?? 0}D`) });
       if (fm.border) put(vcObjects, 'border', { show: L('true'), ...(fm.borderColor ? { color: color(fm.borderColor) } : {}), ...(fm.borderRadius !== undefined ? { radius: L(`${fm.borderRadius}D`) } : {}) });
-      else if (vcObjects.border) put(vcObjects, 'border', { show: L('false') });
+      else if (vcObjects.border || (fm.border === false && THEME.border)) put(vcObjects, 'border', { show: L('false') });
       if (isChartType(v.type)) {
         put(objects, 'legend', { show: L(String(fm.legendShow)) });
         put(objects, 'labels', { show: L(String(fm.dataLabels)) });

@@ -13,6 +13,7 @@ import { Menu, Toggle } from '../components/Menu';
 import { FIELD_MIME } from '../components/VisualContainer';
 import { DEFAULT_CF, fieldKey, ICON_SET } from '../visuals/condfmt';
 import { sp } from '../visuals/pbistyle';
+import { THEME } from '../themes';
 import { fieldKind } from '../query';
 import { bname, sname } from '../pbix/layout';
 import type { CfRule, ColorScale, CondFormat, FieldRef, Page } from '../types';
@@ -513,7 +514,7 @@ function FormatPane({ v }: { v: Visual }) {
           <label className="fmt-row"><span>Sfondo</span>
             <span className="colorpick"><input type="color" value={f.background} onChange={(e) => up({ background: e.target.value })} />{f.background.toUpperCase()}</span>
           </label>
-          <div className="fmt-row inline"><span>Bordo oggetto visivo</span><Toggle on={f.border} onChange={(b) => up({ border: b })} /></div>
+          <div className="fmt-row inline"><span>Bordo oggetto visivo</span><Toggle on={f.border ?? THEME.border} onChange={(b) => up({ border: b })} /></div>
         </Card>
       </>}
     </div>

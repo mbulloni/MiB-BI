@@ -59,7 +59,6 @@ export const defaultFormat = (type: VisualType): VisualFormat => ({
   gridlines: true,
   color: '#118DFF',
   background: ['button', 'shape', 'image', 'pageNavigator', 'bookmarkNavigator'].includes(type) ? 'transparent' : '#FFFFFF',
-  border: false,
   slicerStyle: 'list',
 });
 
@@ -294,6 +293,8 @@ interface State {
   /** Esplora Q&A (button action Q&A): question typed in a modal, answer not part of the report. */
   qnaExplorer: boolean;
   optionsDialog: boolean;
+  /** Visualizza › Temi › Personalizza tema corrente. */
+  themeDialog: boolean;
   /** Slicer change: deferred when the slicer's page has an "Applica tutti i filtri dei dati" button. */
   setSlicer: (id: string, values: string[]) => void;
   /** Page buttons Applica / Cancella tutti i filtri dei dati. */
@@ -1258,6 +1259,7 @@ export const useStore = create<State>((set, get) => {
     publishDialog: false,
     qnaExplorer: false,
     optionsDialog: false,
+    themeDialog: false,
     setSlicer: (id, values) => {
       const page = get().report.pages.find((p) => p.visuals.some((v) => v.id === id));
       if (page && hasApplyAll(page)) get().updateVisual(id, { pendingSlicer: values }, false);

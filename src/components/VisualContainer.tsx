@@ -31,11 +31,13 @@ export const FIELD_MIME = 'application/x-mib-bi-field';
 /** Container look: background (with transparency), border. */
 export function boxStyle(v: Visual): CSSProperties {
   const f = v.format;
-  const bg = f.background === 'transparent' ? 'transparent' : withAlpha(f.background.toUpperCase() === '#FFFFFF' ? THEME.background : f.background, f.bgTransparency);
+  // White and unset values follow the theme (visualStyles *.*.background / border).
+  const bg = f.background === 'transparent' ? 'transparent' : f.background.toUpperCase() === '#FFFFFF' ? withAlpha(THEME.visualBg, f.bgTransparency ?? THEME.visualBgTransparency) : withAlpha(f.background, f.bgTransparency);
+  const border = f.border ?? THEME.border;
   return {
     background: bg,
-    border: f.border ? `1px solid ${f.borderColor ?? '#C8C6C4'}` : undefined,
-    borderRadius: f.border || f.borderRadius ? f.borderRadius ?? 4 : 0,
+    border: border ? `1px solid ${f.borderColor ?? THEME.borderColor}` : undefined,
+    borderRadius: border || f.borderRadius ? f.borderRadius ?? (f.border === undefined ? THEME.borderRadius : 4) : 0,
     overflow: f.borderRadius ? 'hidden' : undefined,
   };
 }
@@ -68,9 +70,11 @@ export function VisualTitle({ v, title }: { v: Visual; title: string }) {
   const f = v.format;
   if (!f.titleShow || !title) return null;
   return (
+    // Unset title properties follow the theme's "title" text class (14 px = the default size).
     <div className="vc-title" style={{
-      fontSize: f.titleSize, color: f.titleColor, textAlign: f.titleAlign, fontFamily: font(f.titleFont),
-      fontWeight: f.titleBold ? 700 : undefined, background: f.titleBg,
+      fontSize: f.titleSize === 14 ? THEME.text.title.size : f.titleSize, color: f.titleColor ?? THEME.text.title.color, textAlign: f.titleAlign,
+      fontFamily: f.titleFont ? font(f.titleFont) : THEME.text.title.font,
+      fontWeight: f.titleBold ? 700 : f.titleBold === false ? 400 : THEME.text.title.weight, background: f.titleBg,
     }}>{title}</div>
   );
 }
@@ -288,7 +292,7 @@ export function VisualContainer({ v, scale, geom, onGeom }: { v: Visual; scale: 
       </div>
       <div className="vc-frame" />
       <InteractionIcons v={v} />
-      <div className="vc-header" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="vc-header" style={THEME.header.background || THEME.header.foreground ? { background: THEME.header.background, color: THEME.header.foreground } : undefined} onMouseDown={(e) => e.stopPropagation()}>
         <DrillButtons v={v} />
         {isChart(v.type) || v.type === 'table' || v.type === 'matrix' ? (
           <button title="Modalità messa a fuoco" onClick={() => s.set({ focusId: v.id, focusTable: false })}><Icon name="focus" size={13} /></button>

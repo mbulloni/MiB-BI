@@ -168,6 +168,18 @@ input[type=checkbox] { accent-color: var(--text); margin: 0; width: 14px; height
 .options-body main { flex: 1; padding: 8px 24px; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
 .options-body main h3 { margin: 8px 0 0; font-size: 15px; }
 .options-body main p { margin: 0; color: var(--text2); font-size: 12px; }
+.theme-dlg main h3 { margin-top: 12px; }
+.th-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px 16px; align-items: end; }
+.th-color, .th-num { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+.th-color { display: grid; grid-template-columns: 34px 1fr; gap: 3px 6px; }
+.th-color span { grid-column: 1 / -1; }
+.th-color input[type=color] { width: 34px; height: 26px; padding: 0; border: 1px solid var(--border); background: none; }
+.th-color input[type=text] { height: 26px; font-family: monospace; }
+.th-num input, .th-num select { height: 26px; }
+.th-swatches { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.th-swatches label { display: flex; flex-direction: column; align-items: center; font-size: 11px; color: var(--text2); }
+.th-swatches input[type=color] { width: 40px; height: 32px; padding: 0; border: 1px solid var(--border); background: none; cursor: pointer; }
+.theme-dlg .link { align-self: flex-start; color: var(--link); padding: 0; }
 .backstage .tile:hover { background: var(--hover); border-color: var(--line3); }
 
 /* ---------- main area ---------- */
@@ -287,6 +299,11 @@ input[type=checkbox] { accent-color: var(--text); margin: 0; width: 14px; height
 
 .filters-pane { background: var(--bg); }
 .filters-pane .section { margin-bottom: 14px; }
+/* Report theme colors (outspacePane): cards blend with the pane unless the theme colors them. */
+.filters-pane.themed .filtercard { background: rgba(127,127,127,.14); color: inherit; border-color: rgba(127,127,127,.35); }
+.filters-pane.themed .filtercard .fsub, .filters-pane.themed .pane-head, .filters-pane.themed .section h4 { color: inherit; }
+.filters-pane.themed .filtercard .fsub { opacity: .8; }
+.filters-pane.themed .pane-search { background: transparent; color: inherit; }
 .filters-pane .section h4 { font-size: 12px; font-weight: 600; margin: 8px 0 6px; }
 .dropzone { border: 1px dashed var(--border); border-radius: 2px; padding: 8px; color: var(--text2); text-align: center; font-size: 11.5px; }
 .dropzone.over { border-color: var(--select); background: var(--sel-bg2); }

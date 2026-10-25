@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { api } from '../api';
 import { useStore, type FilterScope } from '../store';
 import type { Filter } from '../types';
 import { NULL_KEY, qi } from '../query';
 import { Icon } from '../components/icons';
 import { FIELD_MIME } from '../components/VisualContainer';
+import { fontStack, THEME } from '../themes';
+import { withAlpha } from '../visuals/pbistyle';
 
 function FilterCard({ f, scope, removable }: { f: Filter; scope: FilterScope; removable: boolean }) {
   const s = useStore();
@@ -25,7 +27,7 @@ function FilterCard({ f, scope, removable }: { f: Filter; scope: FilterScope; re
   const shown = (values ?? []).filter((x) => !q || (x.v ?? '(vuoto)').toLowerCase().includes(q.toLowerCase()));
 
   return (
-    <div className="filtercard">
+    <div className="filtercard" style={(f.values.length ? THEME.filterPane.cardApplied : THEME.filterPane.cardAvailable) ? { background: f.values.length ? THEME.filterPane.cardApplied : THEME.filterPane.cardAvailable } : undefined}>
       <div className="fhead" onClick={() => setOpen(!open)}>
         <span className="nm" title={`${f.table}[${f.column}]`}>{f.column}</span>
         {f.values.length > 0 && <button title="Cancella filtro" onClick={(e) => { e.stopPropagation(); set([]); }}><Icon name="filter" size={12} /></button>}
@@ -99,7 +101,7 @@ export function FiltersPane() {
   }
 
   return (
-    <div className="pane filters-pane">
+    <div className={'pane filters-pane' + (filterPaneStyle() ? ' themed' : '')} style={filterPaneStyle()}>
       <div className="pane-head">
         <h3>Filtri</h3>
         <div className="tools">
@@ -123,4 +125,11 @@ export function CollapsedPane({ title, onOpen }: { title: string; onOpen: () => 
       <span className="vtitle">{title}</span>
     </div>
   );
+}
+
+/** Riquadro filtri colors from the report theme (outspacePane); none = the app chrome. */
+function filterPaneStyle(): CSSProperties | undefined {
+  const p = THEME.filterPane;
+  if (!p.background && !p.foreground && !p.font) return undefined;
+  return { ...(p.background ? { background: withAlpha(p.background, p.transparency) } : {}), ...(p.foreground ? { color: p.foreground } : {}), ...(p.font ? { fontFamily: fontStack(p.font) } : {}) };
 }

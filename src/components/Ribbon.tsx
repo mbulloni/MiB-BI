@@ -282,6 +282,7 @@ export function Ribbon() {
             {s.report.theme && !THEMES.some((t) => t.name === s.report.theme!.name) && <ThemeSwatch t={s.report.theme} label active onClick={close} />}
           </div>
           <hr />
+          <button onClick={() => { close(); s.set({ themeDialog: true }); }}>Personalizza tema corrente</button>
           <button onClick={() => { close(); s.importTheme(); }}>Sfoglia temi…</button>
           <button onClick={() => { close(); s.exportTheme(); }}>Salva tema corrente</button>
         </Menu>

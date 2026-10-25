@@ -2,11 +2,12 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { api } from '../api';
 import type { CrossFilter, RelativeSlicer, Visual } from '../types';
 import type { VisualData } from './useVisualData';
-import { fieldLabel, fmtAuto, fmtFull, fmtPct, fmtWith, locale } from '../format';
+import { fieldLabel, fmtAuto, fmtFull, fmtPct, fmtWith, locale, PALETTE } from '../format';
 import { fieldKind, NULL_KEY, relativePeriod, type QueryItem } from '../query';
 import { useStore } from '../store';
 import { cellFormat, cfInput, fieldKey, rangeOf, type Range } from './condfmt';
 import { font, pt, sp, units } from './pbistyle';
+import { THEME } from '../themes';
 
 const cell = (v: unknown, measure: boolean) => (measure ? fmtFull(v) : v === null || v === undefined ? '' : String(v));
 const toKey = (v: string | null) => (v === null ? NULL_KEY : v);
@@ -15,13 +16,14 @@ const toKey = (v: string | null) => (v === null ? NULL_KEY : v);
 function tableVars(v: Visual): CSSProperties {
   const g = (o: string, p: string) => sp(v, o, p);
   const vars: Record<string, string | undefined> = {
-    '--t-size': pt(g('values', 'fontSize') ?? g('grid', 'textSize'))?.toString(),
-    '--t-font': font(g('values', 'fontFamily')),
-    '--th-bg': g('columnHeaders', 'backColor'), '--th-fg': g('columnHeaders', 'fontColor'),
-    '--th-size': pt(g('columnHeaders', 'fontSize'))?.toString(), '--th-font': font(g('columnHeaders', 'fontFamily')),
-    '--td-bg1': g('values', 'backColorPrimary') ?? g('values', 'backColor'), '--td-fg1': g('values', 'fontColorPrimary') ?? g('values', 'fontColor'),
+    // Theme text classes: values = label, column headers = header.
+    '--t-size': (pt(g('values', 'fontSize') ?? g('grid', 'textSize')) ?? THEME.textSet.label.size)?.toString(),
+    '--t-font': font(g('values', 'fontFamily')) ?? THEME.textSet.label.font,
+    '--th-bg': g('columnHeaders', 'backColor'), '--th-fg': g('columnHeaders', 'fontColor') ?? THEME.textSet.header.color,
+    '--th-size': (pt(g('columnHeaders', 'fontSize')) ?? THEME.textSet.header.size)?.toString(), '--th-font': font(g('columnHeaders', 'fontFamily')) ?? THEME.textSet.header.font,
+    '--td-bg1': g('values', 'backColorPrimary') ?? g('values', 'backColor'), '--td-fg1': g('values', 'fontColorPrimary') ?? g('values', 'fontColor') ?? THEME.textSet.label.color,
     '--td-bg2': g('values', 'backColorSecondary') ?? g('values', 'backColorPrimary') ?? g('values', 'backColor'),
-    '--td-fg2': g('values', 'fontColorSecondary') ?? g('values', 'fontColorPrimary') ?? g('values', 'fontColor'),
+    '--td-fg2': g('values', 'fontColorSecondary') ?? g('values', 'fontColorPrimary') ?? g('values', 'fontColor') ?? THEME.textSet.label.color,
     '--rh-bg': g('rowHeaders', 'backColor'), '--rh-fg': g('rowHeaders', 'fontColor'),
     '--tot-bg': g('total', 'backColor') ?? g('subTotals', 'backColor'), '--tot-fg': g('total', 'fontColor') ?? g('subTotals', 'fontColor'),
     '--td-pad': typeof g('grid', 'rowPadding') === 'number' ? g('grid', 'rowPadding') + 'px' : undefined,
@@ -94,10 +96,10 @@ export function CardVisual({ v, data }: { v: Visual; data: VisualData }) {
   const showCat = sp(v, 'categoryLabels', 'show') !== false;
   return (
     <div className="card-v">
-      <div className="val" style={{ color: sp(v, 'labels', 'color'), fontSize: pt(sp(v, 'labels', 'fontSize')), fontFamily: font(sp(v, 'labels', 'fontFamily')) }}>
+      <div className="val" style={{ color: sp(v, 'labels', 'color') ?? THEME.textSet.callout.color, fontSize: pt(sp(v, 'labels', 'fontSize')) ?? THEME.textSet.callout.size, fontFamily: font(sp(v, 'labels', 'fontFamily')) ?? THEME.textSet.callout.font, fontWeight: THEME.textSet.callout.weight }}>
         {m ? rich(m, fmtStyled(data, m.alias, val, sp(v, 'labels', 'labelDisplayUnits'), sp(v, 'labels', 'labelPrecision'), data.rows[0]), true) : ''}
       </div>
-      {m && showCat && <div className="cap" style={{ color: sp(v, 'categoryLabels', 'color'), fontSize: pt(sp(v, 'categoryLabels', 'fontSize')), fontFamily: font(sp(v, 'categoryLabels', 'fontFamily')) }}>{fieldLabel(m.field)}</div>}
+      {m && showCat && <div className="cap" style={{ color: sp(v, 'categoryLabels', 'color') ?? THEME.textSet.label.color, fontSize: pt(sp(v, 'categoryLabels', 'fontSize')) ?? THEME.textSet.label.size, fontFamily: font(sp(v, 'categoryLabels', 'fontFamily')) ?? THEME.textSet.label.font }}>{fieldLabel(m.field)}</div>}
     </div>
   );
 }
@@ -113,9 +115,8 @@ export function MultiRowCardVisual({ v, data, cross, onSelect }: { v: Visual; da
   const selected = cross?.visualId === v.id ? cross.value : undefined;
   const bar = sp(v, 'card', 'barShow') !== false;
   const barColor = sp(v, 'card', 'barColor');
-  const valStyle = { color: sp(v, 'dataLabels', 'color'), fontSize: pt(sp(v, 'dataLabels', 'fontSize')), fontFamily: font(sp(v, 'dataLabels', 'fontFamily')) };
-  const capStyle = { color: sp(v, 'categoryLabels', 'color'), fontSize: pt(sp(v, 'categoryLabels', 'fontSize')), fontFamily: font(sp(v, 'categoryLabels', 'fontFamily')) };
-  const headStyle = { color: sp(v, 'cardTitle', 'color'), fontSize: pt(sp(v, 'cardTitle', 'fontSize')), fontFamily: font(sp(v, 'cardTitle', 'fontFamily')) };
+  const ts = (obj: string, k: 'callout' | 'label' | 'header') => ({ color: sp(v, obj, 'color') ?? THEME.textSet[k].color, fontSize: pt(sp(v, obj, 'fontSize')) ?? THEME.textSet[k].size, fontFamily: font(sp(v, obj, 'fontFamily')) ?? THEME.textSet[k].font });
+  const valStyle = ts('dataLabels', 'callout'), capStyle = ts('categoryLabels', 'label'), headStyle = ts('cardTitle', 'header');
   const showCap = sp(v, 'categoryLabels', 'show') !== false;
   const rich = useRichCells(data.items);
   return (
@@ -142,7 +143,7 @@ export function KpiVisual({ data }: { data: VisualData }) {
   const x = val && last ? Number(last[val.alias]) : null;
   const g = goal && last && last[goal.alias] !== null ? Number(last[goal.alias]) : null;
   const ok = x === null || g === null || x >= g;
-  const color = g === null ? '#118DFF' : ok ? '#1AAB40' : '#D64554';
+  const color = g === null ? PALETTE[0] : ok ? THEME.good : THEME.bad;
   const pts = trend && val ? rows.map((r) => Number(r[val.alias])) : [];
   let path = '';
   if (pts.length > 1) {

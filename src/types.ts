@@ -118,7 +118,8 @@ export interface VisualFormat {
   gridlines: boolean;
   color: string;
   background: string;
-  border: boolean;
+  /** undefined = the theme's visual border (visualStyles *.*.border). */
+  border?: boolean;
   /** Filtro dei dati: Elenco, Menu a discesa, cursore (parametri), Riquadro (pulsanti), Tra, Prima di, Dopo, Data/Ora relativa, Testo. */
   slicerStyle: 'list' | 'dropdown' | 'slider' | 'tile' | 'between' | 'before' | 'after' | 'relativeDate' | 'relativeTime' | 'text';
   /** Slicer settings: Selezione singola, "Seleziona tutto" shown (default on), search box, tiles toggle without Ctrl (button slicer multi-select). */
@@ -313,8 +314,24 @@ export interface Measure {
   formatString?: string;
 }
 
-/** Report theme (subset of the Power BI theme JSON). */
-export interface Theme { name: string; dataColors: string[]; background?: string; foreground?: string; tableAccent?: string; visualStyles?: unknown; textClasses?: unknown; }
+/** Report theme: a Power BI theme JSON (name, colors, textClasses, visualStyles…); unknown keys are kept for export. */
+export interface Theme {
+  name: string;
+  dataColors: string[];
+  background?: string;
+  foreground?: string;
+  tableAccent?: string;
+  /** Sentiment colors (waterfall, KPI, icons). */
+  good?: string; neutral?: string; bad?: string;
+  /** Divergent colors (conditional formatting gradients). */
+  maximum?: string; center?: string; minimum?: string;
+  /** textClasses: label, title, callout, header… → { fontFace, fontSize (pt), color }. */
+  textClasses?: Record<string, ThemeText>;
+  /** visualStyles[visualType | '*']['*'][object] = [{ property: value }]. */
+  visualStyles?: Record<string, Record<string, Record<string, Record<string, unknown>[]>>>;
+  [key: string]: unknown;
+}
+export interface ThemeText { fontFace?: string; fontSize?: number; color?: string; bold?: boolean; [key: string]: unknown }
 
 export interface Report {
   theme?: Theme;

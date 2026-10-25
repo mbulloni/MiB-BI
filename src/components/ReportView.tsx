@@ -131,7 +131,7 @@ export function ReportView({ onFit }: { onFit: (n: number) => void }) {
           <button className="btn" onClick={() => s.set({ pauseTick: s.pauseTick + 1 })}>Aggiorna</button>
           <button className="btn" onClick={() => s.set({ paused: false })}>Riprendi le query</button></div>
       )}
-      <div className="canvas-wrap" ref={wrap} style={page.wallpaper ? { background: page.wallpaper } : undefined}>
+      <div className="canvas-wrap" ref={wrap} style={page.wallpaper ?? THEME.outspace ? { background: page.wallpaper ?? THEME.outspace } : undefined}>
         {s.calcEdit ? <VisualCalcEditor /> : focus ? (
           <div className="focus-view" style={{ position: 'absolute', inset: 16, background: 'var(--bg)', display: 'flex', flexDirection: 'column', boxShadow: '0 1.6px 3.6px rgba(0,0,0,.13)' }}>
             <div style={{ height: 36, display: 'flex', alignItems: 'center', padding: '0 12px', gap: 12 }}>

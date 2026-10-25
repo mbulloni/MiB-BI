@@ -8,6 +8,7 @@ import { useStore } from '../store';
 import { cfInput, fieldKey, rangeOf, ruleValue, scaleColor } from './condfmt';
 import { font, pointColors, pt, queryRef, sp, units } from './pbistyle';
 import { applyAnalytics } from './analytics';
+import { THEME } from '../themes';
 
 /** ECharts axis label/title/grid settings from the visual's categoryAxis/valueAxis objects. */
 function axisLook(v: Visual, obj: 'categoryAxis' | 'valueAxis') {
@@ -34,7 +35,7 @@ function legendLook(v: Visual, fallback: string) {
     side,
     cfg: {
       ...(side === 'top' ? { top: 0, left: center ? 'center' : 0 } : side === 'bottom' ? { bottom: 0, left: center ? 'center' : 0 } : side === 'left' ? { left: 0, top: 'middle', orient: 'vertical' as const } : { right: 0, top: 'middle', orient: 'vertical' as const }),
-      textStyle: { color: col ?? AXIS_TEXT, fontSize: size ?? 11 },
+      textStyle: { color: col ?? THEME.axis.color, fontSize: size ?? THEME.axis.size },
     },
   };
 }
@@ -47,8 +48,6 @@ function labelLook(v: Visual) {
 /** The default single-series color follows the theme's first color. */
 const main = (c: string) => (c.toUpperCase() === '#118DFF' ? PALETTE[0] : c);
 
-const FONT = "'Segoe UI', 'Selawik', 'Ubuntu Sans', sans-serif";
-const AXIS_TEXT = '#605E5C';
 const catLabel = (c: string | null) => (c === null ? '(Vuoto)' : c);
 
 /** Continuous ("Continuo") category axis: a single date column without hierarchy (default, like Power BI)
@@ -154,14 +153,14 @@ function cartesian(v: Visual, d: VisualData, selected: string | null | undefined
     axisTick: { show: false },
     axisLine: { show: !horizontal, lineStyle: { color: '#C8C6C4' } },
     axisLabel: {
-      color: AXIS_TEXT, fontSize: 11, hideOverlap: true, overflow: 'truncate' as const,
+      color: THEME.axis.color, fontSize: THEME.axis.size, hideOverlap: true, overflow: 'truncate' as const,
       ...(horizontal ? { width: 90 } : rotated ? { rotate: 45, interval: 0, width: 90 } : { width: Math.max(30, slot) }),
       ...ca.label,
     },
     name: cat && ca.title ? cat.field.column : '',
     nameLocation: 'middle' as const,
     nameGap: horizontal ? 0 : rotated ? 62 : 28,
-    nameTextStyle: { color: '#252423', fontSize: 11, ...ca.titleStyle },
+    nameTextStyle: { color: THEME.dataLabel.color, fontSize: THEME.axis.size, ...ca.titleStyle },
     boundaryGap: kind === 'bar',
   };
   if (horizontal) Object.assign(catAxis, { name: '' });
@@ -173,7 +172,7 @@ function cartesian(v: Visual, d: VisualData, selected: string | null | undefined
     const span = finite.length ? Math.max(...finite) - Math.min(...finite) : 0;
     Object.assign(catAxis, {
       type: cont, data: undefined, scale: cont === 'value', boundaryGap: kind === 'bar' ? ['2%', '2%'] : false,
-      axisLabel: { color: AXIS_TEXT, fontSize: 11, hideOverlap: true, ...(cont === 'time' ? { formatter: timeTick(span) } : { formatter: (x: number) => fmtAuto(x) }), ...ca.label },
+      axisLabel: { color: THEME.axis.color, fontSize: THEME.axis.size, hideOverlap: true, ...(cont === 'time' ? { formatter: timeTick(span) } : { formatter: (x: number) => fmtAuto(x) }), ...ca.label },
       splitLine: { show: false }, nameGap: 28,
     });
   }
@@ -186,11 +185,12 @@ function cartesian(v: Visual, d: VisualData, selected: string | null | undefined
     max: pct ? 100 : undefined,
     axisLine,
     splitLine: { show: va.grid ?? f.gridlines, lineStyle: { color: va.gridColor ?? '#E1DFDD', type: 'dotted' as const } },
-    axisLabel: { color: AXIS_TEXT, fontSize: 11, formatter: (x: number) => (pct ? x + '%' : asPct ? fmtPct(x) : fmtVal(x, 0)), ...va.label },
+    axisLabel: { color: THEME.axis.color, fontSize: THEME.axis.size, formatter: (x: number) => (pct ? x + '%' : asPct ? fmtPct(x) : fmtVal(x, 0)), ...va.label },
     name: !va.title || horizontal || leg || vals.length > 1 || d.items.some((i) => i.well === 'lineValues') ? '' : vals[0] ? fieldLabel(vals[0].field) : '',
     nameLocation: 'middle' as const,
-    nameGap: 44,
-    nameTextStyle: { color: '#252423', fontSize: 11, ...va.titleStyle },
+    // Wider labels (theme or axis font size) push the axis title out.
+    nameGap: Math.round(44 * ((va.label as { fontSize?: number }).fontSize ?? THEME.axis.size) / 11),
+    nameTextStyle: { color: THEME.dataLabel.color, fontSize: THEME.axis.size, ...va.titleStyle },
   };
 
   const lineAxis = { ...valAxis, name: '', position: 'right' as const, splitLine: { show: false },
@@ -226,7 +226,7 @@ function cartesian(v: Visual, d: VisualData, selected: string | null | undefined
   });
   const valText = (x: number) => (pct ? fmtFull(x) + '%' : asPct ? fmtPct(x) : fmtFull(x));
   const option: echarts.EChartsCoreOption = {
-    textStyle: { fontFamily: FONT },
+    textStyle: { fontFamily: THEME.text.label.font },
     animationDuration: 300,
     legend: hl && legendCfg.show ? { ...legendCfg, data: [...series, ...lines].map((s) => s.name) } : legendCfg,
     grid: {
@@ -260,7 +260,7 @@ function cartesian(v: Visual, d: VisualData, selected: string | null | undefined
       lineStyle: kind === 'line' ? { width: 2.5 } : undefined,
       areaStyle: area ? { opacity: stacked ? 0.85 : 0.4 } : undefined,
       emphasis: { focus: 'none' },
-      label: { show: f.dataLabels, position: stacked ? 'inside' : horizontal ? 'right' : 'top', fontSize: lb.size ?? 10, color: lb.color ?? (stacked ? '#fff' : '#252423'), formatter: (p: any) => (yOf(p) === null ? '' : pct ? fmtAuto(yOf(p), 1) + '%' : asPct ? fmtPct(yOf(p)) : fmtLbl(yOf(p))) },
+      label: { show: f.dataLabels, position: stacked ? 'inside' : horizontal ? 'right' : 'top', fontSize: lb.size ?? THEME.dataLabel.size, color: lb.color ?? (stacked ? '#fff' : THEME.dataLabel.color), formatter: (p: any) => (yOf(p) === null ? '' : pct ? fmtAuto(yOf(p), 1) + '%' : asPct ? fmtPct(yOf(p)) : fmtLbl(yOf(p))) },
       ...(cont && kind === 'bar' ? { barMaxWidth: Math.max(2, Math.min(60, ((width - 80) / Math.max(1, categories.length)) * 0.8 / (stacked ? 1 : series.length))) } : {}),
       data: s.data.map((x, i) => ({
         value: at(i, hl ? hl[k][i] : x),
@@ -278,7 +278,7 @@ function cartesian(v: Visual, d: VisualData, selected: string | null | undefined
     })) : []), ...lines.map((s, k) => ({
       name: s.name, type: 'line', yAxisIndex: 1, symbol: 'circle', symbolSize: 6, lineStyle: { width: 2.5 },
       color: PALETTE[(series.length + k) % PALETTE.length], z: 50 + k,
-      label: { show: f.dataLabels, position: 'top', fontSize: 10, color: '#252423', formatter: (p: any) => (yOf(p) === null ? '' : fmtAuto(yOf(p))) },
+      label: { show: f.dataLabels, position: 'top', fontSize: THEME.dataLabel.size, color: THEME.dataLabel.color, formatter: (p: any) => (yOf(p) === null ? '' : fmtAuto(yOf(p))) },
       data: s.data.map((x, i) => at(i, x)),
     }))],
   };
@@ -308,7 +308,7 @@ function pieLike(v: Visual, d: VisualData, selected: string | null | undefined):
   });
   const lg = legendLook(v, f.legendPos);
   const legend = f.legendShow ? { show: true, type: 'scroll' as const, icon: 'circle', itemWidth: 8, itemHeight: 8, ...lg.cfg } : { show: false };
-  const base = { color: PALETTE, textStyle: { fontFamily: FONT }, legend, animationDuration: 300, tooltip: { trigger: 'item', confine: true, valueFormatter: fmtFull,
+  const base = { color: PALETTE, textStyle: { fontFamily: THEME.text.label.font }, legend, animationDuration: 300, tooltip: { trigger: 'item', confine: true, valueFormatter: fmtFull,
     ...(hv ? { formatter: (p: any) => `${p.marker}${p.name}: <b>${p.data?.hl === null || p.data?.hl === undefined ? '—' : fmtFull(p.data.hl)}</b> / ${fmtFull(p.value)}` } : {}) } };
 
   if (v.type === 'treemap') {
@@ -318,7 +318,7 @@ function pieLike(v: Visual, d: VisualData, selected: string | null | undefined):
         ...base, legend: { show: false },
         series: [{ type: 'treemap', roam: false, nodeClick: false, breadcrumb: { show: false }, width: '100%', height: '100%', top: 0, left: 0,
           itemStyle: { borderColor: '#fff', borderWidth: 1, gapWidth: 1 },
-          label: { show: f.dataLabels, fontSize: 11, formatter: '{b}' },
+          label: { show: f.dataLabels, fontSize: THEME.axis.size, formatter: '{b}' },
           data: data.map((x, i) => ({ ...x, itemStyle: { color: PALETTE[i % PALETTE.length], ...x.itemStyle } })) }],
       },
     };
@@ -329,7 +329,7 @@ function pieLike(v: Visual, d: VisualData, selected: string | null | undefined):
       option: {
         ...base, legend: { show: false },
         series: [{ type: 'funnel', sort: 'descending', left: '18%', width: '64%', top: 8, bottom: 8, gap: 2,
-          label: { show: true, position: 'left', color: AXIS_TEXT, fontSize: 11, formatter: '{b}' },
+          label: { show: true, position: 'left', color: THEME.axis.color, fontSize: THEME.axis.size, formatter: '{b}' },
           labelLine: { show: false },
           itemStyle: { color: main(f.color), borderWidth: 0 },
           data: f.dataLabels ? data.map((x) => ({ ...x, label: { show: true } })) : data }],
@@ -344,7 +344,7 @@ function pieLike(v: Visual, d: VisualData, selected: string | null | undefined):
         type: 'pie', radius: v.type === 'donut' ? ['45%', '72%'] : [0, '72%'],
         center: [f.legendShow && lg.side === 'right' ? '42%' : f.legendShow && lg.side === 'left' ? '58%' : '50%', f.legendShow && lg.side === 'top' ? '55%' : f.legendShow && lg.side === 'bottom' ? '45%' : '50%'],
         avoidLabelOverlap: true, itemStyle: { borderColor: '#fff', borderWidth: 1 },
-        label: { show: f.dataLabels, color: lb.color ?? AXIS_TEXT, fontSize: lb.size ?? 11, formatter: (p: any) => `${units(p.value, lb.units, lb.precision) ?? fmtAuto(p.value)} (${p.percent.toLocaleString(locale(), { maximumFractionDigits: 2 })}%)` },
+        label: { show: f.dataLabels, color: lb.color ?? THEME.axis.color, fontSize: lb.size ?? THEME.axis.size, formatter: (p: any) => `${units(p.value, lb.units, lb.precision) ?? fmtAuto(p.value)} (${p.percent.toLocaleString(locale(), { maximumFractionDigits: 2 })}%)` },
         data,
       }],
     },
@@ -363,14 +363,14 @@ function scatter(v: Visual, d: VisualData, selected: string | null | undefined):
   const groups = leg ? uniq(d.rows.map((r) => r[leg.alias])) : [null];
   const axis = (it: QueryItem | undefined, show: boolean) => ({
     type: 'value', show, scale: true, name: it ? fieldLabel(it.field) : '', nameLocation: 'middle', nameGap: 30,
-    nameTextStyle: { color: '#252423', fontSize: 11 },
+    nameTextStyle: { color: THEME.dataLabel.color, fontSize: THEME.axis.size },
     splitLine: { show: f.gridlines, lineStyle: { color: '#E1DFDD', type: 'dotted' } },
-    axisLabel: { color: AXIS_TEXT, fontSize: 11, formatter: (n: number) => fmtAuto(n, 0) },
+    axisLabel: { color: THEME.axis.color, fontSize: THEME.axis.size, formatter: (n: number) => fmtAuto(n, 0) },
   });
   return {
     categories,
     option: {
-      color: PALETTE, textStyle: { fontFamily: FONT }, animationDuration: 300,
+      color: PALETTE, textStyle: { fontFamily: THEME.text.label.font }, animationDuration: 300,
       legend: { show: f.legendShow && !!leg, top: 0, icon: 'circle', itemWidth: 8, itemHeight: 8 },
       grid: { left: 30, right: 16, top: leg ? 28 : 12, bottom: 30, containLabel: true },
       tooltip: { trigger: 'item', confine: true, formatter: (p: any) => `${p.data.name}<br/>${x ? fieldLabel(x.field) : ''}: <b>${fmtFull(p.data.value[0])}</b><br/>${y ? fieldLabel(y.field) : ''}: <b>${fmtFull(p.data.value[1])}</b>` },
@@ -397,28 +397,27 @@ function gauge(v: Visual, d: VisualData): Built {
   return {
     categories: [],
     option: {
-      textStyle: { fontFamily: FONT },
+      textStyle: { fontFamily: THEME.text.label.font },
       series: [{
         type: 'gauge', startAngle: 180, endAngle: 0, min: 0, max, center: ['50%', '72%'], radius: '95%',
         progress: { show: true, width: 36, itemStyle: { color: main(v.format.color) } },
         axisLine: { lineStyle: { width: 36, color: [[1, '#E6E6E6']] } },
         pointer: { show: false }, axisTick: { show: false }, splitLine: { show: false },
-        axisLabel: { show: true, distance: -20, color: AXIS_TEXT, fontSize: 10, formatter: (n: number) => (n === 0 || Math.abs(n - max) < 1e-9 ? fmtAuto(n) : '') },
+        axisLabel: { show: true, distance: -20, color: THEME.axis.color, fontSize: 10, formatter: (n: number) => (n === 0 || Math.abs(n - max) < 1e-9 ? fmtAuto(n) : '') },
         anchor: { show: false },
-        detail: { valueAnimation: true, offsetCenter: [0, '-12%'], fontSize: 22, color: '#252423', formatter: (n: number) => fmtAuto(n) },
+        detail: { valueAnimation: true, offsetCenter: [0, '-12%'], fontSize: 22, color: THEME.dataLabel.color, formatter: (n: number) => fmtAuto(n) },
         markLine: undefined,
         data: [{ value }],
       }, ...(target !== undefined ? [{
         type: 'gauge', startAngle: 180, endAngle: 0, min: 0, max, center: ['50%', '72%'], radius: '95%',
         axisLine: { show: false }, axisTick: { show: false }, axisLabel: { show: false }, splitLine: { show: false }, detail: { show: false },
-        pointer: { show: true, length: 40, width: 3, offsetCenter: [0, '-78%'], itemStyle: { color: '#252423' } },
+        pointer: { show: true, length: 40, width: 3, offsetCenter: [0, '-78%'], itemStyle: { color: THEME.dataLabel.color } },
         data: [{ value: target }],
       }] : [])],
     },
   };
 }
 
-const UP = '#1AAB40', DOWN = '#D64554', TOTAL = '#118DFF';
 
 /** Waterfall: each category moves the running total up (green) or down (red); last bar = total. */
 function waterfall(v: Visual, d: VisualData, selected: string | null | undefined): Built {
@@ -442,19 +441,19 @@ function waterfall(v: Visual, d: VisualData, selected: string | null | undefined
     const faded = selected !== undefined && i < categories.length && categories[i] !== selected;
     return { type: 'rect', shape: { x: a[0] - w / 2, y: Math.min(a[1], b[1]), width: w, height: Math.max(1, Math.abs(a[1] - b[1])) }, style: { fill: color, opacity: faded ? 0.35 : 1 } };
   };
-  const series = ([['up', 'Aumento', UP], ['down', 'Riduzione', DOWN], ['total', 'Totale', TOTAL]] as const).map(([k, name, color]) => ({
+  const series = ([['up', 'Aumento', THEME.good], ['down', 'Riduzione', THEME.bad], ['total', 'Totale', PALETTE[0]]] as const).map(([k, name, color]) => ({
     name, type: 'custom', color, renderItem: bar(color), encode: { x: 0, y: [1, 2] }, data: steps[k],
-    label: { show: f.dataLabels, position: 'top', fontSize: 10, color: '#252423', formatter: (p: any) => fmtAuto(p.data.v) },
+    label: { show: f.dataLabels, position: 'top', fontSize: THEME.dataLabel.size, color: THEME.dataLabel.color, formatter: (p: any) => fmtAuto(p.data.v) },
   }));
   return {
     categories,
     option: {
-      textStyle: { fontFamily: FONT }, animationDuration: 300,
-      legend: { show: f.legendShow, top: 0, left: 0, icon: 'circle', itemWidth: 8, itemHeight: 8, textStyle: { color: AXIS_TEXT, fontSize: 11 } },
+      textStyle: { fontFamily: THEME.text.label.font }, animationDuration: 300,
+      legend: { show: f.legendShow, top: 0, left: 0, icon: 'circle', itemWidth: 8, itemHeight: 8, textStyle: { color: THEME.axis.color, fontSize: THEME.axis.size } },
       grid: { left: 28, right: 16, bottom: 30, top: f.legendShow ? 28 : 12, containLabel: true },
       tooltip: { trigger: 'item', confine: true, formatter: (p: any) => `${p.data.idx < categories.length ? catLabel(categories[p.data.idx]) : 'Totale'}<br/>${val ? fieldLabel(val.field) : ''}: <b>${fmtFull(p.data.v)}</b>` },
-      xAxis: { type: 'category', show: f.xAxisShow, data: [...categories.map(catLabel), 'Totale'], axisTick: { show: false }, axisLine: { lineStyle: { color: '#C8C6C4' } }, axisLabel: { color: AXIS_TEXT, fontSize: 11, hideOverlap: true } },
-      yAxis: { type: 'value', show: f.yAxisShow, scale: false, splitLine: { show: f.gridlines, lineStyle: { color: '#E1DFDD', type: 'dotted' } }, axisLabel: { color: AXIS_TEXT, fontSize: 11, formatter: (x: number) => fmtAuto(x, 0) } },
+      xAxis: { type: 'category', show: f.xAxisShow, data: [...categories.map(catLabel), 'Totale'], axisTick: { show: false }, axisLine: { lineStyle: { color: '#C8C6C4' } }, axisLabel: { color: THEME.axis.color, fontSize: THEME.axis.size, hideOverlap: true } },
+      yAxis: { type: 'value', show: f.yAxisShow, scale: false, splitLine: { show: f.gridlines, lineStyle: { color: '#E1DFDD', type: 'dotted' } }, axisLabel: { color: THEME.axis.color, fontSize: THEME.axis.size, formatter: (x: number) => fmtAuto(x, 0) } },
       series,
     },
   };
@@ -483,12 +482,12 @@ function ribbon(v: Visual, d: VisualData, selected: string | null | undefined, w
   return {
     categories,
     option: {
-      color: PALETTE, textStyle: { fontFamily: FONT }, animationDuration: 300,
-      legend: { show: f.legendShow, type: 'scroll', top: 0, left: 0, icon: 'circle', itemWidth: 8, itemHeight: 8, textStyle: { color: AXIS_TEXT, fontSize: 11 } },
+      color: PALETTE, textStyle: { fontFamily: THEME.text.label.font }, animationDuration: 300,
+      legend: { show: f.legendShow, type: 'scroll', top: 0, left: 0, icon: 'circle', itemWidth: 8, itemHeight: 8, textStyle: { color: THEME.axis.color, fontSize: THEME.axis.size } },
       grid: { left: 28, right: 16, bottom: 30, top: f.legendShow ? 28 : 12, containLabel: true },
       tooltip: { trigger: 'item', confine: true, formatter: (p: any) => `${catLabel(categories[p.data.idx])}<br/>${p.seriesName}: <b>${fmtFull(p.data.v)}</b>` },
-      xAxis: { type: 'category', show: f.xAxisShow, data: categories.map(catLabel), axisTick: { show: false }, axisLine: { lineStyle: { color: '#C8C6C4' } }, axisLabel: { color: AXIS_TEXT, fontSize: 11, hideOverlap: true } },
-      yAxis: { type: 'value', show: f.yAxisShow, max, splitLine: { show: f.gridlines, lineStyle: { color: '#E1DFDD', type: 'dotted' } }, axisLabel: { color: AXIS_TEXT, fontSize: 11, formatter: (x: number) => fmtAuto(x, 0) } },
+      xAxis: { type: 'category', show: f.xAxisShow, data: categories.map(catLabel), axisTick: { show: false }, axisLine: { lineStyle: { color: '#C8C6C4' } }, axisLabel: { color: THEME.axis.color, fontSize: THEME.axis.size, hideOverlap: true } },
+      yAxis: { type: 'value', show: f.yAxisShow, max, splitLine: { show: f.gridlines, lineStyle: { color: '#E1DFDD', type: 'dotted' } }, axisLabel: { color: THEME.axis.color, fontSize: THEME.axis.size, formatter: (x: number) => fmtAuto(x, 0) } },
       series: legends.map((l, s) => ({
         name: catLabel(l), type: 'custom', encode: { x: 0, y: [1, 2] },
         data: categories.map((_, c) => ({ value: [c, ...span[s][c]], idx: c, v: value[s][c] })),
@@ -571,6 +570,11 @@ export function ChartVisual({ v, data, cross, onSelect, events }: {
     cats.current = categories;
     // A report-page tooltip replaces the default one.
     if (v.format.tooltipPage) (option as any).tooltip = { show: false };
+    else if (THEME.tooltip.background || THEME.tooltip.value) {
+      // Theme "Descrizione comando" colors.
+      const tt = (option as any).tooltip ?? {};
+      (option as any).tooltip = { ...tt, ...(THEME.tooltip.background ? { backgroundColor: THEME.tooltip.background, borderColor: THEME.tooltip.background } : {}), textStyle: { ...(tt.textStyle ?? {}), ...(THEME.tooltip.value ? { color: THEME.tooltip.value } : {}) } };
+    }
     chart.current.setOption(option, true);
   }, [v, data, cross, theme]);
 

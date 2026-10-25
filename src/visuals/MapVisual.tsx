@@ -9,8 +9,8 @@ import { useStore } from '../store';
 import { geocode, LAYER_LABEL, loadLayer, type Geocoded, type PolyLayer } from '../geo/geocode';
 import { sp } from './pbistyle';
 import { scaleColor } from './condfmt';
+import { THEME } from '../themes';
 
-const FONT = "'Segoe UI', 'Selawik', 'Ubuntu Sans', sans-serif";
 const registered = new Set<string>();
 
 // Web Mercator, like the Bing base map (latitudes clamped).
@@ -130,9 +130,9 @@ export function MapVisual({ v, data, cross, onSelect }: { v: Visual; data: Visua
           name: p.feature, itemStyle: { areaColor: fill(p), opacity: dim(p.idx) ? 0.35 : 1 }, emphasis: { itemStyle: { areaColor: fill(p), opacity: 0.8 } },
         }));
         option = {
-          textStyle: { fontFamily: FONT }, animation: false, geo: { ...geo, regions },
+          textStyle: { fontFamily: THEME.text.label.font }, animation: false, geo: { ...geo, regions },
           tooltip: { trigger: 'item', confine: true, formatter: (p: any) => p.data ? `${p.name}${leg ? `<br/>${fieldLabel(leg.field)}: ${p.data.legend ?? '(Vuoto)'}` : ''}${val ? `<br/>${fieldLabel(val.field)}: <b>${fmt(p.value)}</b>` : ''}` : p.name },
-          legend: { show: f.legendShow && !!leg, type: 'scroll', top: 0, left: 0, icon: 'circle', itemWidth: 8, itemHeight: 8, textStyle: { fontSize: 11, color: '#605E5C' }, data: leg ? legends.map((l) => l ?? '(Vuoto)') : [] },
+          legend: { show: f.legendShow && !!leg, type: 'scroll', top: 0, left: 0, icon: 'circle', itemWidth: 8, itemHeight: 8, textStyle: { fontSize: THEME.axis.size, color: THEME.axis.color }, data: leg ? legends.map((l) => l ?? '(Vuoto)') : [] },
           series: [{
             type: 'map', geoIndex: 0, nameProperty: 'n', name: 'map',
             data: [...byFeature.values()].map((p) => ({ name: p.feature, value: p.value ?? 0, idx: p.idx, legend: p.legend })),
@@ -152,8 +152,8 @@ export function MapVisual({ v, data, cross, onSelect }: { v: Visual; data: Visua
         const tot = (e: { slices: Slice[] }) => e.slices.reduce((a, s) => a + s.value, 0);
         const maxTot = Math.max(1e-9, ...locs.map(tot));
         option = {
-          textStyle: { fontFamily: FONT }, animation: false, geo,
-          legend: { show: f.legendShow, type: 'scroll', top: 0, left: 0, icon: 'circle', itemWidth: 8, itemHeight: 8, textStyle: { fontSize: 11, color: '#605E5C' }, backgroundColor: 'rgba(255,255,255,.8)', data: legends.map((l) => l ?? '(Vuoto)') },
+          textStyle: { fontFamily: THEME.text.label.font }, animation: false, geo,
+          legend: { show: f.legendShow, type: 'scroll', top: 0, left: 0, icon: 'circle', itemWidth: 8, itemHeight: 8, textStyle: { fontSize: THEME.axis.size, color: THEME.axis.color }, backgroundColor: 'rgba(255,255,255,.8)', data: legends.map((l) => l ?? '(Vuoto)') },
           tooltip: { trigger: 'item', confine: true, formatter: (p: any) => { const e = locs[p.dataIndex]; return `<b>${e.loc}</b>` + e.slices.map((s) => `<br/>${s.legend ?? '(Vuoto)'}: ${fmt(s.value)}`).join(''); } },
           series: [{
             type: 'custom', coordinateSystem: 'geo', geoIndex: 0, name: 'pies',
@@ -177,8 +177,8 @@ export function MapVisual({ v, data, cross, onSelect }: { v: Visual; data: Visua
         };
       } else {
         option = {
-          textStyle: { fontFamily: FONT }, animation: false, geo,
-          legend: { show: f.legendShow && !!leg, type: 'scroll', top: 0, left: 0, icon: 'circle', itemWidth: 8, itemHeight: 8, textStyle: { fontSize: 11, color: '#605E5C' }, backgroundColor: 'rgba(255,255,255,.8)' },
+          textStyle: { fontFamily: THEME.text.label.font }, animation: false, geo,
+          legend: { show: f.legendShow && !!leg, type: 'scroll', top: 0, left: 0, icon: 'circle', itemWidth: 8, itemHeight: 8, textStyle: { fontSize: THEME.axis.size, color: THEME.axis.color }, backgroundColor: 'rgba(255,255,255,.8)' },
           tooltip: { trigger: 'item', confine: true, formatter: (p: any) => `${cat ? p.data.loc ?? '' : `${p.data.value[1]}, ${p.data.value[0]}`}${leg ? `<br/>${fieldLabel(leg.field)}: ${p.seriesName}` : ''}${val ? `<br/>${fieldLabel(val.field)}: <b>${fmt(p.data.v)}</b>` : ''}` },
           series: legends.map((l) => ({
             type: 'scatter', coordinateSystem: 'geo', geoIndex: 0, name: l ?? '(Vuoto)', color: colorOf(l),
@@ -187,7 +187,7 @@ export function MapVisual({ v, data, cross, onSelect }: { v: Visual; data: Visua
               symbolSize: val && p.value !== null ? 6 + 30 * Math.sqrt(Math.abs(p.value) / max) : 9,
               itemStyle: { opacity: dim(p.idx) ? 0.2 : 0.75, borderColor: '#FFFFFF', borderWidth: 0.6 },
             })),
-            label: { show: f.dataLabels, position: 'right', fontSize: 10, color: '#252423', formatter: (p: any) => (p.data.v !== null && p.data.v !== undefined ? fmtAuto(p.data.v) : p.data.loc ?? '') },
+            label: { show: f.dataLabels, position: 'right', fontSize: THEME.dataLabel.size, color: THEME.dataLabel.color, formatter: (p: any) => (p.data.v !== null && p.data.v !== undefined ? fmtAuto(p.data.v) : p.data.loc ?? '') },
           })),
         };
       }
