@@ -91,6 +91,7 @@ handle('db:forget', (c) => connect.forget(c));
 handle('claude:status', () => claude.status());
 handle('claude:configure', (key, model) => claude.configure(key, model));
 handle('claude:ask', (question, schema) => claude.ask(question, schema));
+handle('claude:translate', (items, culture) => claude.translate(items, culture));
 handle('script:run', (lang, script, csv, w, h) => scripts.run(lang, script, csv, w, h));
 handle('script:paths', (p) => (p ? scripts.setPaths(p) : scripts.paths()));
 handle('pbi:status', () => powerbi.status());

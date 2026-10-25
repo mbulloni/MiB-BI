@@ -15,9 +15,23 @@ export const AGG_PREFIX: Record<Agg, string> = {
   count: 'Conteggio di', countd: 'Conteggio di', median: 'Mediana di', stdev: 'Deviazione standard di', var: 'Varianza di', none: '', measure: '', visualCalc: '',
 };
 
-export function fieldLabel(f: FieldRef): string {
+/** Name of a field inside its visual, untranslated: the name visual calculations and nativeQueryRef use. */
+export function refLabel(f: FieldRef): string {
   if (f.datePart) return { year: 'Anno', quarter: 'Trimestre', month: 'Mese', day: 'Giorno' }[f.datePart];
   return f.agg === 'none' || f.agg === 'measure' || f.agg === 'visualCalc' ? f.column : `${AGG_PREFIX[f.agg]} ${f.column}`;
+}
+
+/** Traduzioni del modello in anteprima: captions of the selected culture ("Table" / "Table\u0001Field"). */
+let CAPTIONS: Record<string, string> = {};
+export function setCaptions(c: Record<string, string> | undefined) { CAPTIONS = c ?? {}; }
+/** Display name of a table or of a field of `table` (translated when a culture is previewed). */
+export const caption = (table: string, name?: string) => (name === undefined ? CAPTIONS[table] ?? table : CAPTIONS[`${table}\u0001${name}`] ?? name);
+
+/** Name of a field as shown to the reader (titles, axes, headers): refLabel with the model translation. */
+export function fieldLabel(f: FieldRef): string {
+  if (f.datePart || f.agg === 'visualCalc' || !CAPTIONS[`${f.table}\u0001${f.column}`]) return refLabel(f);
+  const name = caption(f.table, f.column);
+  return f.agg === 'none' || f.agg === 'measure' ? name : `${AGG_PREFIX[f.agg]} ${name}`;
 }
 
 /** Impostazioni internazionali (Opzioni): locale of numbers and dates shown in visuals. */

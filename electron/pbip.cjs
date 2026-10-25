@@ -60,11 +60,31 @@ function fromTmsl(schema, out) {
     }
   }
   for (const r of model.roles ?? []) mx.roles.push({ name: r.name, filters: (r.tablePermissions ?? []).filter((p) => joinExpr(p.filterExpression).trim()).map((p) => ({ table: p.name, expression: joinExpr(p.filterExpression) })) });
+  for (const c of model.cultures ?? []) {
+    const tables = (c.translations?.model?.tables ?? []).map((t) => ({
+      name: t.name, caption: t.translatedCaption, description: t.translatedDescription, folder: t.translatedDisplayFolder,
+      items: [...(t.columns ?? []), ...(t.measures ?? []), ...(t.hierarchies ?? [])].map((x) => ({ name: x.name, caption: x.translatedCaption, description: x.translatedDescription, folder: x.translatedDisplayFolder })),
+    }));
+    pushCulture(mx, c.name, tables);
+  }
+}
+
+/** Culture → { name, captions, descriptions, folders } keyed "Table" / "Table\u0001Field" (MiB-BI Report.cultures). */
+function pushCulture(mx, name, tables) {
+  const c = { name, captions: {}, descriptions: {}, folders: {} };
+  const put = (key, x) => {
+    if (x.caption) c.captions[key] = x.caption;
+    if (x.description) c.descriptions[key] = x.description;
+    if (x.folder) c.folders[key] = x.folder;
+  };
+  for (const t of tables) { put(t.name, t); for (const x of t.items) put(`${t.name}\u0001${x.name}`, x); }
+  for (const k of ['descriptions', 'folders']) if (!Object.keys(c[k]).length) delete c[k];
+  mx.cultures.push(c);
 }
 
 /** Model properties besides tables/relationships/measures (same shape as read_pbix.py). */
 function extras(out) {
-  out.model ??= { hierarchies: [], folders: [], dateTables: {}, calcGroups: [], roles: [], functions: [], calendars: [] };
+  out.model ??= { hierarchies: [], folders: [], dateTables: {}, calcGroups: [], roles: [], functions: [], calendars: [], cultures: [] };
   return out.model;
 }
 
@@ -184,9 +204,11 @@ function parseTmdl(text) {
         parent.props[prop[1]] = value;
         i = next;
       } else {
-        parent.props[prop[1]] = prop[3].trim();
+        // Text values may be double-quoted ("" escapes a quote).
+        const v = prop[3].trim().replace(/^"([\s\S]*)"$/, (_m, x) => x.replace(/""/g, '"'));
+        parent.props[prop[1]] = v;
         // Repeated properties (calendar associatedColumn / column) keep every value.
-        (parent.multi ??= {})[prop[1]] = [...(parent.multi[prop[1]] ?? []), prop[3].trim()];
+        (parent.multi ??= {})[prop[1]] = [...(parent.multi[prop[1]] ?? []), v];
       }
       continue;
     }
@@ -253,6 +275,14 @@ function fromTmdl(dir, out) {
     }
   }
   for (const f of objs.filter((o) => o.kind === 'function')) mx.functions.push({ name: f.name, expression: f.value ?? '', ...(f.description ? { description: f.description } : {}) });
+  for (const c of objs.filter((o) => o.kind === 'cultureInfo')) {
+    const model = c.children.find((x) => x.kind === 'model');
+    const tables = (model?.children ?? []).filter((t) => t.kind === 'table').map((t) => ({
+      name: t.name, caption: unquote(t.props.caption), description: unquote(t.props.description), folder: unquote(t.props.displayFolder),
+      items: t.children.filter((x) => ['column', 'measure', 'hierarchy'].includes(x.kind)).map((x) => ({ name: x.name, caption: unquote(x.props.caption), description: unquote(x.props.description), folder: unquote(x.props.displayFolder) })),
+    }));
+    pushCulture(mx, c.name, tables);
+  }
   for (const r of objs.filter((o) => o.kind === 'role')) {
     mx.roles.push({ name: r.name, filters: r.children.filter((p) => p.kind === 'tablePermission' && (p.value ?? '').trim()).map((p) => ({ table: p.name, expression: p.value })) });
   }

@@ -174,6 +174,27 @@ export const autoDateOn = (report: Report) => report.options?.autoDateTime !== f
 /** Date columns that get an automatic date hierarchy (all date/datetime columns, like Power BI's auto date/time). */
 export const autoDateColumns = (tables: TableMeta[]) => tables.flatMap((t) => (t.fieldParam ? [] : t.columns.filter((c) => tomType(c.type).dataType === 'dateTime').map((c) => ({ table: t.name, column: c.name }))));
 
+/** TMSL cultures: translations of tables and of their columns, measures and hierarchies. */
+function culturesOf(report: Report, tables: TableMeta[]) {
+  const names = [...new Set([...tables.map((t) => t.name), ...report.measures.map((m) => m.table)])];
+  return (report.cultures ?? []).map((c) => {
+    const tr = (key: string) => ({
+      ...(c.captions[key] ? { translatedCaption: c.captions[key] } : {}),
+      ...(c.descriptions?.[key] ? { translatedDescription: c.descriptions[key] } : {}),
+      ...(c.folders?.[key] ? { translatedDisplayFolder: c.folders[key] } : {}),
+    });
+    const items = (table: string, list: string[]) => list.map((n) => ({ name: n, ...tr(`${table}\u0001${n}`) })).filter((x) => Object.keys(x).length > 1);
+    const tbls = names.map((n) => {
+      const t = tables.find((x) => x.name === n);
+      const columns = items(n, t?.columns.map((x) => x.name) ?? []);
+      const measures = items(n, report.measures.filter((m) => m.table === n).map((m) => m.name));
+      const hierarchies = items(n, (report.hierarchies ?? []).filter((h) => h.table === n).map((h) => h.name));
+      return { name: n, ...tr(n), ...(columns.length ? { columns } : {}), ...(measures.length ? { measures } : {}), ...(hierarchies.length ? { hierarchies } : {}) };
+    }).filter((x) => Object.keys(x).length > 1);
+    return { name: c.name, translations: { model: { name: 'Model', ...(tbls.length ? { tables: tbls } : {}) } } };
+  });
+}
+
 /** `autoDates`: add the LocalDateTable/DateTableTemplate tables, variations and relationships (date hierarchies of the report). */
 export function buildModelSchema(report: Report, tables: TableMeta[], autoDates = autoDateOn(report)) {
   const calcOf = (t: string) => report.calcGroups?.find((g) => g.table === t);
@@ -287,6 +308,8 @@ export function buildModelSchema(report: Report, tables: TableMeta[], autoDates 
       ...(report.functions?.length ? {
         functions: report.functions.map((f) => ({ name: f.name, expression: f.expression.split('\n'), lineageTag: crypto.randomUUID(), ...(f.description ? { description: f.description } : {}) })),
       } : {}),
+      // Traduzioni del modello (one culture per language, translated captions/descriptions/display folders).
+      ...(report.cultures?.length ? { cultures: culturesOf(report, tables) } : {}),
       // Sicurezza a livello di riga.
       ...(report.roles?.length ? {
         roles: report.roles.map((r) => ({

@@ -169,6 +169,29 @@ input[type=checkbox] { accent-color: var(--text); margin: 0; width: 14px; height
 .options-body main h3 { margin: 8px 0 0; font-size: 15px; }
 .options-body main p { margin: 0; color: var(--text2); font-size: 12px; }
 .theme-dlg main h3 { margin-top: 12px; }
+.tr-dlg { width: min(1100px, 94vw); height: min(680px, 90vh); display: flex; flex-direction: column; }
+.tr-hint { margin: 0 24px 8px; color: var(--text2); font-size: 12px; }
+.tr-bar { display: flex; gap: 8px; padding: 0 24px 8px; align-items: center; }
+.tr-bar select { height: 28px; }
+.tr-search { display: flex; align-items: center; gap: 4px; border: 1px solid var(--border); padding: 0 6px; height: 28px; margin-left: auto; }
+.tr-search input { border: 0; outline: none; background: transparent; color: var(--text); }
+.tr-grid { flex: 1; overflow: auto; margin: 0 24px; border: 1px solid var(--line); }
+.tr-grid table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.tr-grid th { position: sticky; top: 0; background: var(--bg2); text-align: left; padding: 6px; border-bottom: 1px solid var(--line); z-index: 1; white-space: nowrap; }
+.tr-grid td { padding: 2px 6px; border-bottom: 1px solid var(--line2); white-space: nowrap; }
+.tr-grid td input { width: 100%; min-width: 150px; height: 24px; }
+.tr-grid .tr-table td { font-weight: 600; background: var(--bg2); }
+.tr-grid .tr-kind { color: var(--text2); }
+.tr-grid .tr-base { color: var(--text2); }
+.tr-lang { min-width: 190px; }
+.tr-lang > span { font-weight: 600; margin-right: 6px; }
+.tr-lang .btn { height: 22px; min-width: 0; padding: 0 6px; font-size: 11px; font-weight: 400; }
+.tr-lang > button:last-child { margin-left: 4px; vertical-align: middle; }
+.tr-empty { padding: 24px; color: var(--text2); text-align: center; }
+.tr-msg { margin: 8px 24px 0; color: var(--text2); font-size: 12px; }
+.rb-lang { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 2px 6px; font-size: 12px; }
+.rb-lang select { height: 24px; max-width: 170px; }
+.rb-lang .link { color: var(--link); font-size: 11px; }
 .th-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px 16px; align-items: end; }
 .th-color, .th-num { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
 .th-color { display: grid; grid-template-columns: 34px 1fr; gap: 3px 6px; }

@@ -88,6 +88,7 @@ const UI: Record<string, ReactNode> = {
   docs: <><path d="M7 3 H20 L26 9 V29 H7 Z" fill="#fff" stroke={K} strokeWidth="1.2" />{P('M11 14 H22 M11 18 H22 M11 22 H18', G, 1)}</>,
   pause: <><circle cx="16" cy="16" r="11" fill="none" stroke={K} strokeWidth="1.3" />{P('M13 11 V21 M19 11 V21', K, 2)}</>,
   analyzer: <><circle cx="14" cy="14" r="8" fill="none" stroke={K} strokeWidth="1.3" />{P('M20 20 L27 27', K, 2)}<rect x="10" y="14" width="2" height="4" fill={B} /><rect x="13" y="11" width="2" height="7" fill={B} /><rect x="16" y="13" width="2" height="5" fill={B} /></>,
+  translate: <><circle cx="13" cy="13" r="9" fill="#fff" stroke={K} strokeWidth="1.2" />{P('M4 13 H22 M13 4 C9 8 9 18 13 22 M13 4 C17 8 17 18 13 22', K, 1)}<rect x="17" y="17" width="12" height="12" rx="1.5" fill={B} /><text x="23" y="27" fontSize="9" fontWeight="700" textAnchor="middle" fill="#fff">A</text></>,
   sensitivity: <><path d="M16 3 L27 7 V15 C27 22 22 27 16 29 C10 27 5 22 5 15 V7 Z" fill="#fff" stroke={K} strokeWidth="1.2" /></>,
   // Power Query editor (viewBox 32)
   closeApply: <><rect x="3" y="6" width="17" height="18" fill="#fff" stroke={K} strokeWidth="1.2" />{P('M3 12 H20 M3 18 H20 M9 6 V24', G, .9)}<rect x="3" y="6" width="17" height="3" fill="#F2C811" />{P('M18 22 H29 M25 18 L29 22 L25 26', '#107C41', 1.8)}</>,

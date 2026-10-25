@@ -9,7 +9,7 @@ import { defaultFormat, PAGE_H, PAGE_W } from '../store';
 import { customPkg, isChart as isChartType, visualDef } from '../visuals/catalog';
 import { NULL_KEY, relativePeriod, type RangeCond } from '../query';
 import { INTERACTION_IN, INTERACTION_OUT, interactionKey } from '../visuals/interactions';
-import { fieldLabel, uid } from '../format';
+import { refLabel, uid } from '../format';
 import { decode, pt } from '../visuals/pbistyle';
 import { basicJsonFilter } from '../visuals/custom/objects';
 import { exportCondFormat, importCondFormat } from './condfmt';
@@ -248,7 +248,7 @@ export function parseLayout(layoutJson: string, tables: TableMeta[], measureName
         if (f.agg !== 'visualCalc' || !f.calc) continue;
         f.calc = f.calc.replace(/(?<!['\w\]])\[((?:[^\]]|\]\])+)\]/g, (m, n: string) => {
           const t = nativeRefs.get(n.replace(/\]\]/g, ']').toLowerCase());
-          return t ? `[${fieldLabel(t).replace(/]/g, ']]')}]` : m;
+          return t ? `[${refLabel(t).replace(/]/g, ']]')}]` : m;
         });
       }
 
@@ -598,7 +598,7 @@ export function buildLayout(pages: Page[], reportFilters: Filter[], theme?: Them
           const list = v.fields[w.key] ?? [];
           const active = list.length < 2 || !w.hierarchy || (f.datePart && !dh(f)) || list.indexOf(f) === Math.min(v.drill?.level ?? 0, list.length - 1);
           // nativeQueryRef: the name visual calculations use for the field.
-          (projections[role] ??= []).push({ queryRef: name, nativeQueryRef: fieldLabel(f), ...((role === 'Category' || role === 'Rows') && active ? { active: true } : {}),
+          (projections[role] ??= []).push({ queryRef: name, nativeQueryRef: refLabel(f), ...((role === 'Category' || role === 'Rows') && active ? { active: true } : {}),
             ...(f.hidden ? { hidden: true } : {}), ...(f.agg === 'visualCalc' && f.format ? { format: f.format } : {}) });
         }
       }

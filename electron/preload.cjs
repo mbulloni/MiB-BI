@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('api', {
     status: () => call('claude:status'),
     configure: (key, model) => call('claude:configure', key, model),
     ask: (question, schema) => call('claude:ask', question, schema),
+    translate: (items, culture) => call('claude:translate', items, culture),
   },
   runScript: (lang, script, csv, w, h) => call('script:run', lang, script, csv, w, h),
   scriptPaths: (p) => call('script:paths', p),

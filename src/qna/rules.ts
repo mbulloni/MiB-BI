@@ -3,7 +3,7 @@
 // It produces the same QnaSpec as the Claude path (electron/claude.cjs), turned into a visual by toVisual().
 import type { QnaSpec } from '../api';
 import type { Agg, FieldRef, Measure, TableMeta, Visual, VisualType } from '../types';
-import { isNumeric, uid, fieldLabel } from '../format';
+import { isNumeric, uid, refLabel } from '../format';
 import { api } from '../api';
 import { defaultFormat } from '../store';
 import { visualDef } from '../visuals/catalog';
@@ -167,7 +167,7 @@ export function parse(question: string, idx: QnaIndex): QnaSpec {
     visual = !d && values.length ? 'card' : !values.length ? 'table' : TIME.test(norm(d.column)) ? 'line' : GEO.test(norm(d.column)) ? 'map' : dims.length > 1 ? 'clusteredColumn' : 'clusteredBar';
   }
   const fields = arrange(visual, dims, values);
-  const label = (f: QnaSpec['fields'][number]) => fieldLabel({ table: f.table, column: f.column, agg: f.agg as Agg });
+  const label = (f: QnaSpec['fields'][number]) => refLabel({ table: f.table, column: f.column, agg: f.agg as Agg });
   const title = [values.map(label).join(' e '), dims.length ? 'per ' + dims.map((d) => d.column).join(' e ') : ''].filter(Boolean).join(' ');
   const fl = [...filters.values()];
   const restatement = [title, fl.length ? 'filtrato su ' + fl.map((f) => `${f.column} = ${f.values.join(', ')}`).join('; ') : '', topN ? `${asc ? 'ultimi' : 'primi'} ${topN}` : ''].filter(Boolean).join(', ');

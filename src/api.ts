@@ -24,6 +24,7 @@ export interface PowerBIModel {
     calcGroups: { table: string; column: string; precedence: number; items: { name: string; expression: string; formatString?: string }[] }[];
     functions?: import('./types').DaxFunction[];
     calendars?: import('./types').CalendarDef[];
+    cultures?: import('./types').Culture[];
     roles: { name: string; filters: { table: string; expression: string }[] }[];
   };
   warnings: string[];
@@ -89,6 +90,8 @@ interface Api {
     status(): Promise<ClaudeStatus>;
     configure(key: string | null, model?: string): Promise<ClaudeStatus>;
     ask(question: string, schema: string): Promise<{ spec: QnaSpec; model: string; usage: { input: number; output: number } }>;
+    /** Traduzioni del modello: captions for one culture, keyed by item id. */
+    translate(items: { id: string; name: string; hint: string }[], culture: string): Promise<Record<string, string>>;
   };
   /** Python/R visual: runs the script on the CSV dataset, returns a PNG data URL. */
   runScript(lang: 'python' | 'r', script: string, csv: string, width: number, height: number): Promise<string>;

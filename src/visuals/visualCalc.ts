@@ -8,7 +8,7 @@ import { DaxError, parse, type Node } from '../dax/parse';
 import { expandUdfCalls, type Model } from '../dax';
 import type { FieldRef, Visual } from '../types';
 import { CF_WELL, type QueryItem } from '../query';
-import { fieldLabel, fmtWith } from '../format';
+import { refLabel, fmtWith } from '../format';
 import { visualDef } from './catalog';
 
 export const isCalc = (f: FieldRef) => f.agg === 'visualCalc';
@@ -453,7 +453,7 @@ export function fieldRefs(items: QueryItem[]): Map<string, QueryItem> {
   const m = new Map<string, QueryItem>();
   for (const i of items) {
     if (i.well === CF_WELL) continue;
-    const label = fieldLabel(i.field).toLowerCase();
+    const label = refLabel(i.field).toLowerCase();
     if (!m.has(label)) m.set(label, i);
     if (!m.has(i.field.column.toLowerCase())) m.set(i.field.column.toLowerCase(), i);
   }

@@ -6,6 +6,7 @@ import { Icon, VisualIcon } from './icons';
 import { Menu } from './Menu';
 import { VISUALS } from '../visuals/catalog';
 import { THEMES } from '../themes';
+import { cultureName } from './TranslationsDialog';
 import type { SensitivityLabel, Theme } from '../types';
 import { api } from '../api';
 
@@ -168,6 +169,10 @@ export function Ribbon() {
             <Big icon="calendar" label={<>Opzioni<br />calendario</>} disabled={!s.tables.length} onClick={() => s.set({ calendarDialog: s.dataViewTable ?? s.tables.find((t) => t.columns.some((c) => /^(DATE|TIMESTAMP)/i.test(c.type)))?.name ?? s.tables[0].name })}
               title="Calendari per la time intelligence basata su calendario (anni fiscali, settimane, 4-4-5…)" />
           </Group>
+          <Group label="Traduzioni">
+            <Big icon="translate" label="Traduzioni" onClick={() => s.set({ translationsDialog: true })} disabled={!s.tables.length}
+              title="Nomi di tabelle, colonne e misure in altre lingue (culture del modello)" />
+          </Group>
           <Group label="Sicurezza">
             <Big icon="shield" label={<>Gestisci<br />ruoli</>} onClick={() => s.set({ rolesDialog: true })} disabled={!s.tables.length} />
             <Big icon="user" label={<>Visualizza<br />come</>} onClick={() => s.set({ viewAsDialog: true })} disabled={!s.tables.length} />
@@ -184,6 +189,17 @@ export function Ribbon() {
           </Group>
           <Group label="Lettura">
             <Big icon="pageView" label={<>Modalità<br />lettura</>} onClick={() => s.set({ readMode: true, view: 'report', selectedVisualId: null })} disabled={!report} />
+          </Group>
+          <Group label="Lingua">
+            <div className="rb-lang">
+              <span>Lingua del report</span>
+              <select value={s.previewCulture ?? ''} onChange={(e) => s.set({ previewCulture: e.target.value || null })} title="Mostra il report con le traduzioni del modello in questa lingua"
+                disabled={!s.report.cultures?.length}>
+                <option value="">Nomi del modello</option>
+                {(s.report.cultures ?? []).map((c) => <option key={c.name} value={c.name}>{cultureName(c.name)}</option>)}
+              </select>
+              <button className="link" onClick={() => s.set({ translationsDialog: true })} disabled={!s.tables.length}>Traduzioni…</button>
+            </div>
           </Group>
           <Group label="Ridimensiona">
             <Big icon="pageView" label={<>Visualizzazione<br />pagina</>} dropdown onClick={openMenu('pageview')} disabled={!report} />

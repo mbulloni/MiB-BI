@@ -3,6 +3,7 @@ import { api } from '../api';
 import { useStore, type FilterScope } from '../store';
 import type { Filter } from '../types';
 import { NULL_KEY, qi } from '../query';
+import { caption } from '../format';
 import { Icon } from '../components/icons';
 import { FIELD_MIME } from '../components/VisualContainer';
 import { fontStack, THEME } from '../themes';
@@ -29,7 +30,7 @@ function FilterCard({ f, scope, removable }: { f: Filter; scope: FilterScope; re
   return (
     <div className="filtercard" style={(f.values.length ? THEME.filterPane.cardApplied : THEME.filterPane.cardAvailable) ? { background: f.values.length ? THEME.filterPane.cardApplied : THEME.filterPane.cardAvailable } : undefined}>
       <div className="fhead" onClick={() => setOpen(!open)}>
-        <span className="nm" title={`${f.table}[${f.column}]`}>{f.column}</span>
+        <span className="nm" title={`${f.table}[${f.column}]`}>{caption(f.table, f.column)}</span>
         {f.values.length > 0 && <button title="Cancella filtro" onClick={(e) => { e.stopPropagation(); set([]); }}><Icon name="filter" size={12} /></button>}
         {removable && <button title="Rimuovi filtro" onClick={(e) => { e.stopPropagation(); s.removeFilter(scope, f.id); }}><Icon name="close" size={12} /></button>}
         <button><Icon name={open ? 'chevronUp' : 'chevronDown'} size={12} /></button>

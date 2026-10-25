@@ -363,6 +363,8 @@ export interface Report {
   functions?: DaxFunction[];
   /** Calendari (Strumenti tabella › Opzioni calendario). */
   calendars?: CalendarDef[];
+  /** Traduzioni del modello (TOM cultures): captions, descriptions and display folders per language. */
+  cultures?: Culture[];
 }
 
 /** `levels` = columns in order; `levelNames` = level name when it differs from the column. */
@@ -451,3 +453,12 @@ export interface CondRule { column: string; op: FilterOp; value: string; vtype: 
 export type StepKind = Step['kind'];
 /** A step before it gets its id (distributes Omit over the union). */
 export type NewStep = Step extends infer S ? (S extends Step ? Omit<S, 'id'> : never) : never;
+
+/** One language of the model translations; keys are "Table" (tables) or "Table\u0001Field" (columns, measures, hierarchies). */
+export interface Culture {
+  /** BCP 47 culture name, e.g. en-US. */
+  name: string;
+  captions: Record<string, string>;
+  descriptions?: Record<string, string>;
+  folders?: Record<string, string>;
+}

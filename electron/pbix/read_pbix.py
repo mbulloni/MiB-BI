@@ -236,6 +236,26 @@ def model_extras_sqlite(db, out):
         else:
             g.setdefault("associated", []).append(r["C"])
     mx["calendars"].extend(cals.values())
+    # Model translations: ObjectTranslation rows (ObjectType 3 table, 4 column, 8 measure, 9 hierarchy;
+    # Property 1 caption, 2 description, 3 display folder) per Culture.
+    keys = {}
+    for _, r in q("SELECT ID AS I, Name AS N FROM [Table]"):
+        keys[(3, r["I"])] = r["N"]
+    for typ, sql in ((4, "SELECT c.ID AS I, t.Name AS T, COALESCE(c.ExplicitName, c.InferredName) AS N FROM [Column] c JOIN [Table] t ON c.TableID = t.ID"),
+                     (8, "SELECT m.ID AS I, t.Name AS T, m.Name AS N FROM [Measure] m JOIN [Table] t ON m.TableID = t.ID"),
+                     (9, "SELECT h.ID AS I, t.Name AS T, h.Name AS N FROM [Hierarchy] h JOIN [Table] t ON h.TableID = t.ID")):
+        for _, r in q(sql):
+            keys[(typ, r["I"])] = f"{r['T']}\u0001{r['N']}"
+    cultures = {}
+    for _, r in q("SELECT c.Name AS C, o.ObjectID AS O, o.ObjectType AS T, o.Property AS P, o.Value AS V FROM [ObjectTranslation] o JOIN [Culture] c ON o.CultureID = c.ID"):
+        key = keys.get((int(r["T"] or 0), r["O"]))
+        if key is None or not isinstance(r["V"], str) or not r["V"]:
+            continue
+        cu = cultures.setdefault(r["C"], {"name": r["C"], "captions": {}, "descriptions": {}, "folders": {}})
+        slot = {1: "captions", 2: "descriptions", 3: "folders"}.get(int(r["P"] or 0))
+        if slot:
+            cu[slot][key] = r["V"]
+    mx["cultures"].extend(cultures.values())
 
 
 # TOM TimeUnit (Calendar column groups); 0 = time-related columns.
@@ -285,6 +305,18 @@ def model_extras_tmsl(model, out):
     for r in model.get("roles", []):
         mx["roles"].append({"name": r["name"], "filters": [{"table": p["name"], "expression": text_of(p.get("filterExpression"))}
                                                           for p in r.get("tablePermissions", []) if text_of(p.get("filterExpression")).strip()]})
+    for c in model.get("cultures", []):
+        cu = {"name": c["name"], "captions": {}, "descriptions": {}, "folders": {}}
+
+        def put(key, o):
+            for src, slot in (("translatedCaption", "captions"), ("translatedDescription", "descriptions"), ("translatedDisplayFolder", "folders")):
+                if isinstance(o.get(src), str) and o[src]:
+                    cu[slot][key] = o[src]
+        for t in (c.get("translations") or {}).get("model", {}).get("tables", []):
+            put(t["name"], t)
+            for x in t.get("columns", []) + t.get("measures", []) + t.get("hierarchies", []):
+                put(f"{t['name']}\u0001{x['name']}", x)
+        mx["cultures"].append(cu)
 
 
 def from_schema(z, out):
@@ -373,7 +405,7 @@ def main():
     os.makedirs(outdir, exist_ok=True)
     out = {"file": path, "kind": None, "tables": [], "relationships": [], "measures": [],
            "layout": None, "resources": {}, "customVisuals": [], "parameters": [], "warnings": [],
-           "model": {"hierarchies": [], "folders": [], "dateTables": {}, "calcGroups": [], "roles": [], "functions": [], "calendars": []}}
+           "model": {"hierarchies": [], "folders": [], "dateTables": {}, "calcGroups": [], "roles": [], "functions": [], "calendars": [], "cultures": []}}
     with zipfile.ZipFile(path) as z:
         names = z.namelist()
         if "Report/Layout" in names:

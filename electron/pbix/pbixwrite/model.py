@@ -28,7 +28,12 @@ TPL.update({
     'Calendar': {'ID': 0, 'TableID': 0, 'Name': '', 'Description': None, 'LineageTag': None, 'SourceLineageTag': None, 'ModifiedTime': 0},
     'CalendarColumnGroup': {'ID': 0, 'CalendarID': 0, 'TimeUnit': 0, 'ModifiedTime': 0},
     'CalendarColumnReference': {'ID': 0, 'CalendarColumnGroupID': 0, 'ColumnID': 0, 'IsPrimaryColumn': 0, 'ModifiedTime': 0},
+    # Model translations.
+    'Culture': {'ID': 0, 'ModelID': 1, 'Name': '', 'LinguisticMetadataID': None, 'ModifiedTime': 0, 'StructureModifiedTime': 0},
+    'ObjectTranslation': {'ID': 0, 'CultureID': 0, 'ObjectID': 0, 'ObjectType': 0, 'Property': 1, 'Value': '', 'ModifiedTime': 0, 'Altered': 0},
 })
+# TOM TranslatedProperty.
+TRANSLATED = {'translatedCaption': 1, 'translatedDescription': 2, 'translatedDisplayFolder': 3}
 # TOM TimeUnit values.
 TIME_UNIT = {n: i for i, n in enumerate(['unknown', 'year', 'semester', 'semesterOfYear', 'quarter', 'quarterOfYear', 'quarterOfSemester', 'month',
                                          'monthOfYear', 'monthOfSemester', 'monthOfQuarter', 'week', 'weekOfYear', 'weekOfSemester', 'weekOfQuarter',
@@ -191,6 +196,7 @@ class Builder:
         self.origins = []  # (calculated table column id, 'Table[Column]' it comes from)
         self.rel_ids = {}
         self.hier_ids = {}
+        self.measure_ids = {}
 
     # ---- helpers -------------------------------------------------------------------------------------------
     def annotations(self, obj, obj_id, kind):
@@ -449,6 +455,7 @@ class Builder:
         db, now = self.db, self.db.now
         for m in info['json'].get('measures', []):
             mid = db.id()
+            self.measure_ids[(info['json']['name'], m['name'])] = mid
             db.ins('Measure', 'Measure', ID=mid, TableID=info['id'], Name=m['name'], Expression=_text(m.get('expression')),
                    FormatString=m.get('formatString', ''), IsHidden=1 if m.get('isHidden') else 0,
                    Description=_text(m.get('description')), DisplayFolder=m.get('displayFolder', ''),
@@ -615,6 +622,32 @@ class Builder:
                             db.ins('CalendarColumnReference', 'CalendarColumnReference', ID=db.id(), CalendarColumnGroupID=gid,
                                    ColumnID=info['cols'][col], IsPrimaryColumn=primary, ModifiedTime=now)
 
+    def cultures(self):
+        db, now = self.db, self.db.now
+        for c in self.model.get('cultures', []):
+            cid = db.id()
+            db.ins('Culture', 'Culture', ID=cid, Name=c['name'], ModifiedTime=now, StructureModifiedTime=now)
+
+            def put(obj, oid, otype):
+                for prop, code in TRANSLATED.items():
+                    if obj.get(prop):
+                        db.ins('ObjectTranslation', 'ObjectTranslation', ID=db.id(), CultureID=cid, ObjectID=oid, ObjectType=OBJ[otype],
+                               Property=code, Value=obj[prop], ModifiedTime=now)
+            for t in (c.get('translations') or {}).get('model', {}).get('tables', []):
+                info = self.tables.get(t['name'])
+                if not info:
+                    continue
+                put(t, info['id'], 'table')
+                for x in t.get('columns', []):
+                    if x['name'] in info['cols']:
+                        put(x, info['cols'][x['name']], 'column')
+                for x in t.get('measures', []):
+                    if (t['name'], x['name']) in self.measure_ids:
+                        put(x, self.measure_ids[(t['name'], x['name'])], 'measure')
+                for x in t.get('hierarchies', []):
+                    if (t['name'], x['name']) in self.hier_ids:
+                        put(x, self.hier_ids[(t['name'], x['name'])], 'hierarchy')
+
     def build(self):
         db, now = self.db, self.db.now
         m = self.model
@@ -637,6 +670,7 @@ class Builder:
         self.roles()
         self.functions()
         self.calendars()
+        self.cultures()
         db.con.execute("update DBPROPERTIES set VALUE=? where NAME='MAXID'", (db.next,))
         for k in ('LASTCUBEDATACHANGE', 'LASTCUBESCHEMACHANGE', 'LASTCOMMITTED', 'LASTMETADATACHANGEFORSYNCCOMMITTED'):
             db.con.execute('update DBPROPERTIES set VALUE=? where NAME=?', (now, k))

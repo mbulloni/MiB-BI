@@ -4,7 +4,7 @@ import { api } from './api';
 import type { Bookmark, CrossFilter, DbConnection, FieldRef, Filter, Interaction, NewStep, Page, PQType, Relationship, Report, Step, Theme, TableMeta, View, Visual, VisualFormat, VisualType } from './types';
 import { interactionKey } from './visuals/interactions';
 import { propagateSync } from './visuals/sync';
-import { fieldLabel, isNumeric, uid } from './format';
+import { refLabel, isNumeric, setCaptions, uid } from './format';
 import { customName, setCustomVisuals, visualDef } from './visuals/catalog';
 import { CF_WELL, connected, modelExtras, NULL_KEY, qi, ql } from './query';
 import { daxShow, daxStore } from './dax/separators';
@@ -119,6 +119,18 @@ function mergeStep(prev: Step, next: Step): boolean {
 
 const reEscape = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/** Model translations follow a renamed object: `match(key)` → new key or null (keys "Table" / "Table\u0001Field"). */
+function renameInCultures(r: Report, match: (key: string) => string | null) {
+  for (const c of r.cultures ?? []) {
+    for (const map of [c.captions, c.descriptions, c.folders]) {
+      if (!map) continue;
+      for (const k of Object.keys(map)) { const to = match(k); if (to !== null && to !== k) { map[to] = map[k]; delete map[k]; } }
+    }
+  }
+}
+const renameFieldInCultures = (r: Report, table: string, from: string, to: string) =>
+  renameInCultures(r, (k) => (k === `${table}\u0001${from}` ? `${table}\u0001${to}` : null));
+
 /** Renames a table everywhere the report refers to it (fields, filters, relationships, measures). */
 function renameTableInReport(r: Report, from: string, to: string) {
   const walk = (o: any) => {
@@ -129,6 +141,7 @@ function renameTableInReport(r: Report, from: string, to: string) {
   };
   walk(r.pages); walk(r.reportFilters); walk(r.relationships); walk(r.measures); walk(r.hierarchies); walk(r.calcGroups); walk(r.roles); walk(r.calendars);
   if (r.modelLayout[from]) { r.modelLayout[to] = r.modelLayout[from]; delete r.modelLayout[from]; }
+  renameInCultures(r, (k) => (k === from ? to : k.startsWith(from + '\u0001') ? to + k.slice(from.length) : null));
   if (r.dateTables?.[from]) { r.dateTables[to] = r.dateTables[from]; delete r.dateTables[from]; }
   for (const k of Object.keys(r.displayFolders ?? {})) {
     if (k.startsWith(from + '\u0001')) { r.displayFolders![to + k.slice(from.length)] = r.displayFolders![k]; delete r.displayFolders![k]; }
@@ -153,6 +166,7 @@ function renameColumnInDax(r: Report, table: string, from: string, to: string) {
     return x;
   };
   for (const m of [...r.measures, ...(r.functions ?? [])]) m.expression = fix(m.expression);
+  renameFieldInCultures(r, table, from, to);
   for (const c of r.calendars ?? []) if (c.table === table) for (const g of c.groups) {
     if (g.primary === from) g.primary = to;
     g.associated = g.associated?.map((x) => (x === from ? to : x));
@@ -295,6 +309,10 @@ interface State {
   optionsDialog: boolean;
   /** Visualizza › Temi › Personalizza tema corrente. */
   themeDialog: boolean;
+  /** Modellazione › Traduzioni. */
+  translationsDialog: boolean;
+  /** Language previewed in the report (model translations), null = the model's own names. Not saved. */
+  previewCulture: string | null;
   /** Slicer change: deferred when the slicer's page has an "Applica tutti i filtri dei dati" button. */
   setSlicer: (id: string, values: string[]) => void;
   /** Page buttons Applica / Cancella tutti i filtri dei dati. */
@@ -725,6 +743,8 @@ export const useStore = create<State>((set, get) => {
         if (mx?.functions?.length) extrasReport.functions = mx.functions;
         const cals = (mx?.calendars ?? []).filter((c) => known(c.table));
         if (cals.length) extrasReport.calendars = cals;
+        const cultures = (mx?.cultures ?? []).filter((c) => Object.keys(c.captions ?? {}).length || Object.keys(c.descriptions ?? {}).length || Object.keys(c.folders ?? {}).length);
+        if (cultures.length) extrasReport.cultures = cultures;
         if (extrasReport.calcGroups) {
           set({ report: { ...get().report, calcGroups: extrasReport.calcGroups } });
           await get().syncCalcTables();
@@ -897,6 +917,7 @@ export const useStore = create<State>((set, get) => {
         };
         walk(r.pages);
       }
+      if (patch.name && patch.name !== name) renameFieldInCultures(r, table, name, patch.name);
       if (patch.name && patch.name !== name && r.displayFolders?.[table + '\u0001' + name]) {
         r.displayFolders[table + '\u0001' + patch.name] = r.displayFolders[table + '\u0001' + name];
         delete r.displayFolders[table + '\u0001' + name];
@@ -1058,6 +1079,7 @@ export const useStore = create<State>((set, get) => {
             const i = r.measures.findIndex((x) => x.name === old);
             if (i >= 0) r.measures[i] = m; else r.measures.push(m);
             if (old && old !== name) {
+              renameFieldInCultures(r, m.table, old, name);
               // Power BI updates references to a renamed measure.
               const re = new RegExp(`\\[${reEscape(old)}\\]`, 'gi');
               for (const x of r.measures) if (x !== m) x.expression = x.expression.replace(re, `[${name}]`);
@@ -1260,6 +1282,8 @@ export const useStore = create<State>((set, get) => {
     qnaExplorer: false,
     optionsDialog: false,
     themeDialog: false,
+    translationsDialog: false,
+    previewCulture: null,
     setSlicer: (id, values) => {
       const page = get().report.pages.find((p) => p.visuals.some((v) => v.id === id));
       if (page && hasApplyAll(page)) get().updateVisual(id, { pendingSlicer: values }, false);
@@ -1692,11 +1716,11 @@ export const useStore = create<State>((set, get) => {
       const fields = Object.values(v.fields).flat();
       const f = original ? fields.find((x) => x.agg === 'visualCalc' && x.column === original) : undefined;
       const first = fields.find((x) => x.agg !== 'none' && x.agg !== 'visualCalc');
-      const taken = (n: string) => fields.some((x) => fieldLabel(x).toLowerCase() === n.toLowerCase() && x.column !== original);
+      const taken = (n: string) => fields.some((x) => refLabel(x).toLowerCase() === n.toLowerCase() && x.column !== original);
       let name = template?.name ?? 'Calcolo', i = 2;
       const base = name;
       while (!f && taken(name)) name = `${base} ${i++}`;
-      const body = template ? template.text.split('{f}').join(first ? fieldLabel(first) : 'Valore') : '';
+      const body = template ? template.text.split('{f}').join(first ? refLabel(first) : 'Valore') : '';
       set({ calcEdit: { visualId, original: original ?? null, text: f ? `${f.column} = ${daxShow(f.calc ?? '')}` : `${name} = ${daxShow(body)}`, format: f ? f.format : template?.format }, focusId: null, selectedVisualId: visualId, view: 'report' });
     },
     saveVisualCalc: () => {
@@ -1710,9 +1734,9 @@ export const useStore = create<State>((set, get) => {
       const v = get().report.pages.flatMap((p) => p.visuals).find((x) => x.id === ed.visualId);
       if (!v) return fail('Oggetto visivo non trovato.');
       const fields = Object.values(v.fields).flat();
-      if (fields.some((x) => fieldLabel(x).toLowerCase() === parts.name.toLowerCase() && !(x.agg === 'visualCalc' && x.column === ed.original))) return fail(`L'oggetto visivo contiene già un campo denominato "${parts.name}".`);
+      if (fields.some((x) => refLabel(x).toLowerCase() === parts.name.toLowerCase() && !(x.agg === 'visualCalc' && x.column === ed.original))) return fail(`L'oggetto visivo contiene già un campo denominato "${parts.name}".`);
       // References: fields of the visual (as named in the wells) and its other calculations, never itself.
-      const names = new Set(fields.flatMap((x) => [fieldLabel(x).toLowerCase(), x.column.toLowerCase()]));
+      const names = new Set(fields.flatMap((x) => [refLabel(x).toLowerCase(), x.column.toLowerCase()]));
       for (const m of parts.expr.matchAll(/(?<!['\w\]])\[((?:[^\]]|\]\])+)\]/g)) {
         const n = m[1].replace(/\]\]/g, ']').toLowerCase();
         if (n === parts.name.toLowerCase()) return fail('Un calcolo visivo non può fare riferimento a se stesso.');
@@ -1951,6 +1975,12 @@ export async function prepareCfExport() {
 }
 
 useStore.subscribe((s, prev) => { if (s.report.theme !== prev.report.theme) applyTheme(s.report.theme); });
+useStore.subscribe((s, prev) => {
+  if (s.report.cultures === prev.report.cultures && s.previewCulture === prev.previewCulture) return;
+  setCaptions(s.previewCulture ? s.report.cultures?.find((c) => c.name === s.previewCulture)?.captions : undefined);
+  // Visuals re-render with the translated titles, axes and headers.
+  if (s.previewCulture !== prev.previewCulture) s.set({ dataVersion: s.dataVersion + 1 });
+});
 useStore.subscribe((s, prev) => { if (s.report.customVisuals !== prev.report.customVisuals) setCustomVisuals(s.report.customVisuals); });
 // Calculation group tables follow their items (also after undo/redo).
 useStore.subscribe((s, prev) => { if (s.report.calcGroups !== prev.report.calcGroups) void s.syncCalcTables(); });

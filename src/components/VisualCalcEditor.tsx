@@ -2,7 +2,7 @@
 // and the visual matrix below with every field, hidden ones included (eye icon toggles visibility).
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
-import { fieldLabel, fmtFull, fmtWith } from '../format';
+import { refLabel, fmtFull, fmtWith } from '../format';
 import { useVisualData } from '../visuals/useVisualData';
 import { CALC_TEMPLATES, isCalc } from '../visuals/visualCalc';
 import { VisualBody } from './VisualContainer';
@@ -86,7 +86,7 @@ function VisualMatrix({ v }: { v: Visual }) {
           return (
             <th key={i.alias} className={(i.measure ? 'num' : '') + (i.field.hidden ? ' vc-hidden' : '')}>
               {isCalc(i.field) && <i className="fx-ico" style={{ marginRight: 4 }}>fx</i>}
-              {fieldLabel(i.field)}
+              {refLabel(i.field)}
               {i.measure && w.idx >= 0 && (
                 <button className="vc-eye" title={i.field.hidden ? "Mostra nell'oggetto visivo" : "Nascondi nell'oggetto visivo"} onClick={() => s.toggleFieldHidden(v.id, w.well, w.idx)}>
                   <Icon name={i.field.hidden ? 'eyeOff' : 'eye'} size={13} />

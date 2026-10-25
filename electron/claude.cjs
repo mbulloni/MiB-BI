@@ -78,10 +78,11 @@ Filters keep only the listed values (use values exactly as they appear in the da
 Choose the visual the way Power BI Q&A does: a single number → card; over time → line; by a geographic field → map; by a category → clusteredBar; several fields without a measure → table. Follow an explicitly requested visual type.
 Set answerable to false (and leave fields empty) when the question is not about this data.`;
 
-async function ask(question, schemaText) {
+/** One structured-output request: `schema` constrains the JSON answer. Errors become Italian messages. */
+async function structured(system, content, schema) {
   const st = status();
   const key = apiKey();
-  if (!key) throw new Error('Configurare la chiave API di Anthropic (Domande e risposte › Impostazioni Claude).');
+  if (!key) throw new Error('Configurare la chiave API di Anthropic (Opzioni › Domande e risposte).');
   const client = new Anthropic({ apiKey: key });
   let response;
   try {
@@ -91,11 +92,11 @@ async function ask(question, schemaText) {
       max_tokens: 16000,
       // Server-side fallback on a safety decline (not offered for Haiku 4.5, which also has no effort setting).
       ...(haiku ? {} : { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }),
-      // Short, well-specified translation task: low effort keeps answers fast and cheap.
-      output_config: { ...(haiku ? {} : { effort: 'low' }), format: { type: 'json_schema', schema: SPEC_SCHEMA } },
+      // Short, well-specified tasks: low effort keeps answers fast and cheap.
+      output_config: { ...(haiku ? {} : { effort: 'low' }), format: { type: 'json_schema', schema } },
       cache_control: { type: 'ephemeral' },
-      system: SYSTEM,
-      messages: [{ role: 'user', content: `Data model schema:\n${schemaText}\n\nQuestion: ${question}` }],
+      system,
+      messages: [{ role: 'user', content }],
     });
   } catch (e) {
     if (e instanceof Anthropic.AuthenticationError) throw new Error('Chiave API non valida.');
@@ -104,12 +105,39 @@ async function ask(question, schemaText) {
     if (e instanceof Anthropic.APIError) throw new Error(`Errore dell'API Anthropic (${e.status ?? '?'}): ${e.message}`);
     throw e;
   }
-  if (response.stop_reason === 'refusal') throw new Error('Claude ha rifiutato la domanda.');
+  if (response.stop_reason === 'refusal') throw new Error('Claude ha rifiutato la richiesta.');
   if (response.stop_reason === 'max_tokens') throw new Error('Risposta di Claude incompleta.');
   const text = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
-  let spec;
-  try { spec = JSON.parse(text); } catch { throw new Error('Risposta di Claude non valida.'); }
-  return { spec, model: response.model, usage: { input: response.usage?.input_tokens ?? 0, output: response.usage?.output_tokens ?? 0 } };
+  let json;
+  try { json = JSON.parse(text); } catch { throw new Error('Risposta di Claude non valida.'); }
+  return { json, model: response.model, usage: { input: response.usage?.input_tokens ?? 0, output: response.usage?.output_tokens ?? 0 } };
 }
 
-module.exports = { status, configure, ask };
+async function ask(question, schemaText) {
+  const { json, model, usage } = await structured(SYSTEM, `Data model schema:\n${schemaText}\n\nQuestion: ${question}`, SPEC_SCHEMA);
+  return { spec: json, model, usage };
+}
+
+// Traduzioni del modello: display names of tables, columns, measures and hierarchies for one culture.
+const TRANSLATE_SCHEMA = {
+  type: 'object', additionalProperties: false, required: ['translations'],
+  properties: {
+    translations: {
+      type: 'array',
+      items: { type: 'object', additionalProperties: false, required: ['id', 'text'], properties: { id: { type: 'string' }, text: { type: 'string' } } },
+    },
+  },
+};
+const TRANSLATE_SYSTEM = `You translate the display names (captions) of objects in a Power BI semantic model into the target culture.
+Names are business terms shown to report readers: translate their meaning, keep them short, keep acronyms, codes and product or company names unchanged, and use the capitalization conventions of the target language.
+The hint after each name says what the object is (table, column of a table, measure, hierarchy) to disambiguate the meaning.
+Return one translation for every id you receive, with the same id.`;
+
+/** items: [{ id, name, hint }] → { [id]: translated name } for `culture` (BCP 47, e.g. en-US). */
+async function translate(items, culture) {
+  const lines = items.map((i) => `${i.id}\t${i.name}\t(${i.hint})`).join('\n');
+  const { json } = await structured(TRANSLATE_SYSTEM, `Target culture: ${culture}\n\nid\tname\thint\n${lines}`, TRANSLATE_SCHEMA);
+  return Object.fromEntries((json.translations ?? []).filter((t) => t && typeof t.id === 'string' && typeof t.text === 'string' && t.text.trim()).map((t) => [t.id, t.text.trim()]));
+}
+
+module.exports = { status, configure, ask, translate };
