@@ -1,6 +1,6 @@
 {
   "name": "mib-bi",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "description": "MiB-BI - clone educativo di Power BI Desktop per Linux",
   "main": "electron/main.cjs",
   "scripts": {
