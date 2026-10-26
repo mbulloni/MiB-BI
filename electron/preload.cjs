@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('api', {
   importFile: (file, table, sheet) => call('db:import', file, table, sheet),
   dropTable: (table) => call('db:drop', table),
   dbRefetch: (sources) => call('db:refetch', sources),
+  tmdlParse: (text) => call('tmdl:parse', text),
   materialize: (table, sql, mode) => call('db:materialize', table, sql, mode),
   sourceExpr: (source) => call('db:sourceExpr', source),
   clearRemoteCache: () => call('remote:clearCache'),

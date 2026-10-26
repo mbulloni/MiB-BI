@@ -60,6 +60,7 @@ const UI: Record<string, ReactNode> = {
   report: <><rect x="4" y="13" width="3" height="7" fill="none" stroke={K} strokeWidth="1.3" /><rect x="10.5" y="5" width="3" height="15" fill="none" stroke={K} strokeWidth="1.3" /><rect x="17" y="9" width="3" height="11" fill="none" stroke={K} strokeWidth="1.3" /></>,
   tableView: <><rect x="3" y="4" width="18" height="16" rx="1" fill="none" stroke={K} strokeWidth="1.3" />{P('M3 9 H21 M3 14 H21 M9 4 V20 M15 4 V20', K, 1)}</>,
   model: <><rect x="2.5" y="3" width="8" height="7" fill="none" stroke={K} strokeWidth="1.3" /><rect x="13.5" y="14" width="8" height="7" fill="none" stroke={K} strokeWidth="1.3" /><rect x="13.5" y="3" width="8" height="7" fill="none" stroke={K} strokeWidth="1.3" />{P('M6.5 10 V17.5 H13.5 M10.5 6.5 H13.5', K, 1.2)}</>,
+  tmdl: <><rect x="3" y="4" width="18" height="16" rx="1" fill="none" stroke={K} strokeWidth="1.3" /><text x="12" y="15.5" fontSize="6.5" textAnchor="middle" fill={K} fontWeight="600">TMDL</text></>,
   dax: <><rect x="3" y="4" width="18" height="16" rx="1" fill="none" stroke={K} strokeWidth="1.3" /><text x="12" y="16" fontSize="8" textAnchor="middle" fill={K} fontStyle="italic" fontWeight="600">DAX</text></>,
   // ribbon large (viewBox 32)
   getData: <><ellipse cx="13" cy="7" rx="8" ry="3" fill="none" stroke={K} strokeWidth="1.3" />{P('M5 7 V23 C5 25 21 25 21 23 V7', K, 1.3)}{P('M5 15 C5 17 21 17 21 15', K, 1)}<rect x="18" y="19" width="11" height="10" rx="1" fill="#fff" stroke={K} />{P('M23.5 21.5 V26.5 M21 24 H26', K)}</>,
@@ -166,7 +167,7 @@ const UI: Record<string, ReactNode> = {
 
 export function Icon({ name, size = 16, box }: { name: string; size?: number; box?: number }) {
   const big = ['getData', 'excel', 'sql', 'enterData', 'sample', 'recent', 'transform', 'refresh', 'newVisual', 'textBox', 'moreVisuals', 'measure', 'quickMeasure', 'publish', 'paste', 'newPage', 'relationships', 'newColumn', 'newTable', 'themes', 'pageView', 'mobile', 'info', 'docs', 'pause', 'analyzer', 'sensitivity', 'closeApply', 'chooseColumns', 'removeColumns', 'keepRows', 'removeRows', 'splitColumn', 'groupBy', 'replaceValues', 'mergeQueries', 'appendQueries', 'customColumn', 'indexColumn', 'duplicateColumn', 'advancedEditor', 'unpivot', 'fillDown', 'formatText', 'dataType', 'rename', 'round', 'calendarBig'];
-  const rail = ['report', 'tableView', 'model', 'dax'];
+  const rail = ['report', 'tableView', 'model', 'dax', 'tmdl'];
   const vb = box ?? (big.includes(name) ? 32 : rail.includes(name) ? 24 : 16);
   return <svg width={size} height={size} viewBox={`0 0 ${vb} ${vb}`} style={{ flexShrink: 0 }}>{UI[name]}</svg>;
 }

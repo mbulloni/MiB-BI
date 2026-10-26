@@ -1116,7 +1116,7 @@ thead .pq-rn { z-index: 2; }
 .persp-tree { flex: 1; overflow: auto; font-size: 12.5px; }
 .persp-tree summary { display: flex; align-items: center; gap: 6px; padding: 4px 0; cursor: pointer; font-weight: 600; }
 .persp-field { display: flex; align-items: center; gap: 6px; padding: 2px 0 2px 26px; }
-.data-persp { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; font-size: 12px; }
+.data-persp { display: flex; align-items: center; gap: 6px; margin: 0 12px 6px; font-size: 12px; min-width: 0; }
 .data-persp select { flex: 1; min-width: 0; }
 .ols-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; max-height: 140px; overflow: auto; font-size: 12px; }
 .group-dlg { width: min(760px, 94vw); max-height: 86vh; }
@@ -1126,3 +1126,21 @@ thead .pq-rn { z-index: 2; }
 .group-box { height: 280px; overflow: auto; border: 1px solid var(--line); border-radius: 3px; padding: 6px; display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
 .group-item { padding: 4px 0; border-bottom: 1px solid var(--line); }
 .group-item input { flex: 1; }
+.tmdlview { flex: 1; display: flex; min-height: 0; background: var(--bg); }
+.tmdl-tree { width: 260px; border-right: 1px solid var(--line); overflow: auto; padding: 6px; font-size: 12.5px; flex-shrink: 0; }
+.tmdl-tree-hd { display: flex; align-items: center; justify-content: space-between; font-weight: 600; padding: 4px 4px 8px; }
+.tmdl-tree .tnode { display: flex; align-items: center; gap: 4px; padding: 3px 4px; cursor: pointer; border-radius: 3px; }
+.tmdl-tree .tnode:hover { background: var(--hover, var(--bg2)); }
+.tmdl-tree .tnode .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tmdl-tree .tnode .hint { margin-left: auto; color: var(--text2); font-size: 11px; }
+.tmdl-tree .tmdl-go { opacity: 0; display: flex; }
+.tmdl-tree .tnode:hover .tmdl-go { opacity: .8; }
+.tmdl-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.tmdl-main .daxview-editor { flex: 1; min-height: 0; }
+.tmdl-text { tab-size: 4; background: var(--bg); color: var(--text); overflow: auto; }
+.tmdl-tabs .x { margin-left: 8px; opacity: .6; }
+.tmdl-tabs .x:hover { opacity: 1; }
+.tmdl-out { height: 150px; border-top: 1px solid var(--line); display: flex; flex-direction: column; flex-shrink: 0; }
+.tmdl-log { padding: 8px 12px; overflow: auto; font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
+.tmdl-log .err { color: var(--err-text); display: flex; gap: 6px; align-items: flex-start; }
+.tmdl-log .ok { color: var(--ok-text); }

@@ -70,6 +70,8 @@ interface Api {
   materialize(table: string, sql: string, mode?: StorageMode): Promise<TableInfo>;
   /** DirectQuery over driver sources: fetch the source queries again (ATTACHed databases are read live). */
   dbRefetch(sources: TableMeta['source'][]): Promise<boolean[]>;
+  /** Vista TMDL: parses a TMDL script (electron/pbip.cjs#parseTmdl). */
+  tmdlParse(text: string): Promise<import('./tmdlApply').TmdlNode>;
   sourceExpr(source: TableMeta['source']): Promise<string>;
   clearRemoteCache(): Promise<void>;
   openDir(): Promise<string | null>;

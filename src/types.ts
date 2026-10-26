@@ -458,7 +458,7 @@ export interface CrossFilter {
   datePart?: DatePart;
 }
 
-export type View = 'report' | 'data' | 'model' | 'dax';
+export type View = 'report' | 'data' | 'model' | 'dax' | 'tmdl';
 
 export interface QueryResult { columns: string[]; rows: Record<string, any>[]; }
 

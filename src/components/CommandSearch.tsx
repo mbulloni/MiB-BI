@@ -31,7 +31,7 @@ export function CommandSearch() {
       ['Riquadro Segnalibri', panes('bookmarks')], ['Riquadro Selezione', panes('selection')], ['Riquadro Filtri', panes('filters')],
       ['Riquadro Visualizzazioni', panes('viz')], ['Riquadro Dati', panes('data')],
       ['Aggiungi segnalibro', () => { st().addBookmark(); st().set({ panes: { ...st().panes, bookmarks: true } }); }],
-      ['Vista report', () => st().setView('report')], ['Vista tabella', () => st().setView('data')], ['Vista modello', () => st().setView('model')], ['Vista query DAX', () => st().setView('dax')],
+      ['Vista report', () => st().setView('report')], ['Vista tabella', () => st().setView('data')], ['Vista modello', () => st().setView('model')], ['Vista query DAX', () => st().setView('dax')], ['Vista TMDL', () => st().setView('tmdl')],
     ].map(([label, run]) => ({ group: 'Comandi', label: label as string, run: run as () => void }));
     const visuals: Item[] = VISUALS.map((d) => ({ group: 'Inserisci oggetto visivo', label: d.name, icon: <VisualIcon type={d.type} size={16} />, run: () => { st().setView('report'); st().addVisual(d.type); } }));
     const pages: Item[] = s.report.pages.map((p) => ({ group: 'Pagine', label: p.name, hint: p.hidden ? 'nascosta' : undefined, run: () => st().set({ view: 'report', activePageId: p.id }) }));

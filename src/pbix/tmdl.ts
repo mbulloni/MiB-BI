@@ -212,3 +212,44 @@ export function tmslToTmdl(db: Obj): Record<string, string> {
   for (const c of model.cultures ?? []) out[`cultures/${fileName(c.name)}.tmdl`] = culture(c);
   return out;
 }
+
+/** Object of the model scripted in the TMDL view (Vista TMDL): `createOrReplace` + its definition. */
+export type TmdlTarget =
+  | { kind: 'model' }
+  | { kind: 'table'; name: string }
+  | { kind: 'measure' | 'column' | 'hierarchy'; table: string; name: string }
+  | { kind: 'relationship' | 'role' | 'perspective' | 'expression' | 'function' | 'cultureInfo'; name: string };
+
+const indent = (text: string, n: number) => text.split('\n').map((l) => (l ? '\t'.repeat(n) + l : l)).join('\n');
+
+/** TMDL script of one object (or of the whole model) from a TMSL database, as Power BI writes it. */
+export function tmdlScript(db: Obj, target: TmdlTarget): string {
+  const model: Obj = db.model ?? {};
+  const head = 'createOrReplace\n\n';
+  const tableOf = (n: string) => (model.tables ?? []).find((t: Obj) => t.name === n);
+  switch (target.kind) {
+    case 'model': {
+      const files = tmslToTmdl(db);
+      const order = Object.keys(files).filter((k) => k !== 'database.tmdl' && k !== 'model.tmdl');
+      return head + order.map((k) => indent(files[k].trimEnd(), 1)).join('\n\n') + '\n';
+    }
+    case 'table': { const t = tableOf(target.name); return t ? head + indent(table(t).trimEnd(), 1) + '\n' : ''; }
+    case 'measure': case 'column': case 'hierarchy': {
+      const t = tableOf(target.table);
+      const list = t?.[target.kind === 'measure' ? 'measures' : target.kind === 'column' ? 'columns' : 'hierarchies'] ?? [];
+      const o = list.find((x: Obj) => x.name === target.name);
+      if (!o) return '';
+      const body = target.kind === 'measure' ? measure(o, 2) : target.kind === 'column' ? column(o, 2) : hierarchy(o, 2);
+      return `${head}\tref table ${tmdlName(target.table)}\n\n${body.trimEnd()}\n`;
+    }
+    default: {
+      const coll = { relationship: 'relationships', role: 'roles', perspective: 'perspectives', expression: 'expressions', function: 'functions', cultureInfo: 'cultures' }[target.kind];
+      const o = (model[coll] ?? []).find((x: Obj) => x.name === target.name);
+      if (!o) return '';
+      const text = target.kind === 'relationship' ? relationship(o) : target.kind === 'role' ? role(o) : target.kind === 'perspective' ? perspective(o) : target.kind === 'cultureInfo' ? culture(o)
+        : target.kind === 'function' ? description(o.description, 0) + `function ${tmdlName(o.name)}${expr(o.expression, 2)}\n` + props(o, 1, ['expression']) + annotations(o, 1)
+          : description(o.description, 0) + `expression ${tmdlName(o.name)}${expr(o.expression, 2)}\n` + props(o, 1, ['expression', 'kind']) + annotations(o, 1);
+      return head + indent(text.trimEnd(), 1) + '\n';
+    }
+  }
+}

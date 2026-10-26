@@ -18,6 +18,7 @@ import { ThemeDialog } from './components/ThemeDialog';
 import { checkUpdates, UpdateBanner, UpdateDialog } from './components/Updates';
 import { TranslationsDialog } from './components/TranslationsDialog';
 import { AggregationsDialog } from './components/AggregationsDialog';
+import { TmdlView } from './components/TmdlView';
 import { IncrementalDialog } from './components/IncrementalDialog';
 import { PerspectivesDialog } from './components/PerspectivesDialog';
 import { GroupDialog } from './components/GroupDialog';
@@ -50,6 +51,7 @@ const VIEWS: [View, string, string][] = [
   ['data', 'tableView', 'Vista tabella'],
   ['model', 'model', 'Vista modello'],
   ['dax', 'dax', 'Vista query DAX'],
+  ['tmdl', 'tmdl', 'Vista TMDL'],
 ];
 
 /** Quiet check for a newer release a few seconds after startup. */
@@ -129,6 +131,7 @@ export function App() {
           {s.view === 'data' && <DataView />}
           {s.view === 'model' && <ModelView />}
           {s.view === 'dax' && <DaxQueryView />}
+          {s.view === 'tmdl' && <TmdlView />}
           {s.view === 'report' && !s.readMode && s.panes.perf && <PerformancePane />}
           {s.view === 'report' && !s.readMode && s.panes.sync && <SyncPane />}
           {s.view === 'report' && !s.readMode && s.panes.bookmarks && <BookmarksPane />}

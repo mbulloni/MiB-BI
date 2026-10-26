@@ -64,6 +64,7 @@ handle('db:preview', (file, sheet) => db.preview(file, sheet));
 handle('db:import', (file, table, sheet) => db.importFile(file, table, sheet));
 handle('db:materialize', (table, sql, mode) => db.materialize(table, sql, mode));
 handle('db:sourceExpr', (source) => (source.inline ? db.inlineExpr(source.inline) : source.db ? connect.sourceExpr(source) : source.web || source.odata || source.folder || source.sharepoint ? remote.sourceExpr(source) : db.sourceExpr(source.path, source.sheet)));
+handle('tmdl:parse', (text) => JSON.parse(JSON.stringify(pbip.parseTmdl(text), (k, v) => (k === 'indent' || k === 'multi' ? undefined : v))));
 handle('db:refetch', (sources) => Promise.all(sources.map((s) => connect.refetch(s))));
 handle('remote:clearCache', () => { remote.clearCache(); connect.clearCache(); });
 const webcred = require('./webcred.cjs');

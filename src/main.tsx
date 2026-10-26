@@ -1,3 +1,4 @@
+import { applyTmdl } from './tmdlApply';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import './styles.css';
@@ -39,3 +40,4 @@ import { buildLayout, parseLayout } from './pbix/layout';
 (window as any).__mibbiLang = setUiLang;
 import { evaluateM } from './pq/m/host';
 (window as any).__mibbiM = { evaluateM };
+(window as any).__mibbiTmdl = { applyTmdl };

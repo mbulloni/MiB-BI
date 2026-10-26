@@ -239,8 +239,10 @@ function parseTmdl(text) {
     const parent = stack[stack.length - 1];
     const kw = /^(table|column|measure|partition|relationship|hierarchy|level|annotation|expression|model|database|role|tablePermission|culture|calculationGroup|calculationItem|perspective|dataSource|ref|cultureInfo|linguisticMetadata|variation|changedProperty|extendedProperty|queryGroup|function|calendar|calendarColumnGroup|alternateOf|refreshPolicy|perspectiveTable|perspectiveColumn|perspectiveMeasure|perspectiveHierarchy|columnPermission)\b(?!\s*:)\s*(.*)$/.exec(t);
     if (kw) {
-      const [name, rest] = takeName(kw[2]);
-      const obj = { kind: kw[1], name, props: {}, children: [], indent: ind, ...(doc.length ? { description: doc.join('\n') } : {}) };
+      // "ref table Sales" (model.tmdl, TMDL scripts): the referenced kind, then the name.
+      const [refKind, afterKind] = kw[1] === 'ref' ? takeName(kw[2]) : [undefined, kw[2]];
+      const [name, rest] = takeName(afterKind);
+      const obj = { kind: kw[1], name, props: {}, children: [], indent: ind, ...(refKind ? { refKind } : {}), ...(doc.length ? { description: doc.join('\n') } : {}) };
       doc = [];
       const eq = /^\s*=\s*(.*)$/.exec(rest);
       if (eq) {
