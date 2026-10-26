@@ -41,8 +41,14 @@ Non è affiliato a Microsoft; nome e logo sono volutamente diversi.
 | **Aggiornamenti** — avviso di una nuova release su GitHub, novità, download e installazione con riavvio | **Linguaggio M completo** — query M con i passaggi applicati (uno per riga del `let`), gruppi di query, funzioni |
 | ![Funzione personalizzata e Invoca](docs/screenshots/pq-invoca.png) | ![Dipendenze query](docs/screenshots/pq-dipendenze.png) |
 | **Funzione personalizzata** — *Immetti parametri* e *Invoca*, query solo connessione | **Dipendenze query** — origini → query → modello, evidenziazione di una query |
-| ![Unisci con corrispondenza fuzzy](docs/screenshots/pq-unisci-fuzzy.png) | |
-| **Unisci query con corrispondenza fuzzy** — soglia, maiuscole/minuscole, spazi, numero di corrispondenze | |
+| ![Unisci con corrispondenza fuzzy](docs/screenshots/pq-unisci-fuzzy.png) | ![Modello composito con una tabella DirectQuery](docs/screenshots/modello-directquery.png) |
+| **Unisci query con corrispondenza fuzzy** — soglia, maiuscole/minuscole, spazi, numero di corrispondenze | **Modello composito** — tabella DirectQuery su SQLite, tabella di aggregazione, *Modalità di archiviazione: Mista* nella barra di stato |
+| ![Gestisci aggregazioni](docs/screenshots/aggregazioni.png) | ![Aggiornamento incrementale](docs/screenshots/incrementale.png) |
+| **Gestisci aggregazioni** — Raggruppa per, Somma, Conteggio verso la tabella dei dettagli DirectQuery | **Aggiornamento incrementale** — criteri, simulazione dell'aggiornamento del servizio con le partizioni e rilevamento modifiche |
+| ![Vista TMDL](docs/screenshots/vista-tmdl.png) | ![Sicurezza a livello di oggetto](docs/screenshots/ruoli-ols.png) |
+| **Vista TMDL** — script `createOrReplace` degli oggetti, modifica e *Applica* | **Sicurezza a livello di oggetto** — colonne nascoste per ruolo in Gestisci ruoli |
+| ![Gruppi](docs/screenshots/gruppi.png) | ![Prospettive](docs/screenshots/prospettive.png) |
+| **Nuovo gruppo** — valori raggruppati in un elenco con *Altro*, o intervalli di numeri e date | **Prospettive** — sottoinsiemi del modello scelti nel riquadro Dati |
 
 ## Scaricare e installare
 
@@ -314,6 +320,42 @@ confidenza restano nel `.mibx`), perché i nomi di quelle proprietà non sono do
 Limiti: `Pdf.Tables`, `Web.Page` e `Web.BrowserContents` non sono supportati; le query M non vengono ripiegate (folding) sul
 database: i dati vengono letti e trasformati in MiB-BI.
 
+### Modelli compositi, aggregazioni, aggiornamento incrementale, Vista TMDL
+
+- **Modalità di archiviazione** *Importazione*, *DirectQuery* e *Doppia*: in Ottieni dati › Database (*Modalità Connettività
+  dati*), oppure *Proprietà* della tabella (ingranaggio nell'intestazione della tabella in Vista modello o menu della tabella).
+  Una tabella DirectQuery è una vista DuckDB sull'origine: per MySQL, PostgreSQL e SQLite ogni oggetto visivo legge il database
+  al momento; per i connettori con driver (SQL Server, Oracle…) la query viene rieseguita con Aggiorna e con l'aggiornamento
+  automatico della pagina. Le colonne calcolate funzionano anche sulle tabelle DirectQuery. La barra di stato mostra
+  *Modalità di archiviazione: Mista*; la Vista modello un'etichetta *DirectQuery*/*Doppia* sulle tabelle.
+- **Aggiornamento pagina** (riquadro Formato della pagina): intervallo in secondi o minuti per le tabelle DirectQuery.
+- **Gestisci aggregazioni** (Modellazione o menu della tabella): ogni colonna della tabella di aggregazione è *Raggruppa per*,
+  *Somma*, *Conteggio*, *Minimo*, *Massimo* o *Conteggio righe tabella* di una colonna dei dettagli. Una query che usa solo
+  colonne mappate (più le tabelle collegate alla tabella di aggregazione) legge l'aggregazione; l'Analizzatore prestazioni
+  indica quale tabella ha risposto. La tabella di aggregazione è nascosta nella vista report.
+- **Aggiornamento incrementale** (Modellazione o menu della tabella): crea i parametri `RangeStart`/`RangeEnd` (nuovo tipo
+  *Data/ora*) e il filtro nella query, poi i criteri (archivia N periodi, aggiorna gli ultimi N, solo periodi completi,
+  rileva modifiche, tempo reale con DirectQuery). *Simula aggiornamento* applica alla tabella caricata quello che farebbe il
+  servizio a una data scelta: righe dei periodi archiviati mantenute, periodi incrementali riletti, periodi invariati saltati
+  se la colonna di modifica non cambia, righe fuori finestra eliminate; mostra le partizioni con il numero di righe.
+- **Prospettive** (Modellazione), **sicurezza a livello di oggetto** (Gestisci ruoli: tabella *Nessuno* o colonne nascoste,
+  attiva in *Visualizza come*: gli oggetti visivi che usano un oggetto nascosto, anche tramite misure, mostrano un errore),
+  **Descrizione** di tabelle, colonne, misure e gerarchie (*Proprietà*, suggerimento nel riquadro Dati), **Nuovo gruppo**
+  (menu della colonna o Strumenti colonna › *Gruppi dati*: elenco con gruppo *Altro*, intervalli numerici o di anni/mesi,
+  salvati come colonna calcolata DAX).
+- **Vista TMDL** (ultima icona della barra a sinistra): albero del modello, script `createOrReplace` di tabelle, misure,
+  colonne, gerarchie, relazioni, ruoli, prospettive, espressioni, funzioni e culture in più schede; *Applica* (Ctrl+Invio)
+  esegue lo script: `table` sostituisce misure, colonne calcolate e gerarchie della tabella, `ref table` aggiunge o modifica
+  solo gli oggetti elencati.
+- File Power BI: `mode` delle partizioni, `alternateOf`, `refreshPolicy`, `perspectives`, `metadataPermission`/
+  `columnPermissions` e descrizioni in `.pbit`/`.pbip` (TMSL e TMDL) e lettura anche dal `.pbix`.
+
+Limiti: il writer `.pbix` scrive le descrizioni ma non prospettive, OLS, aggregazioni, criteri incrementali e modalità
+DirectQuery (vanno in `.pbit`/`.pbip`); le tabelle DirectQuery di un file Power BI vengono caricate come dati; la tabella
+ibrida (tempo reale) e l'aggiornamento della pagina con *Rilevamento modifiche* sono solo esportati; i gruppi diventano
+colonne calcolate (senza i metadati `GroupingMetadata` di Power BI); nessun query folding e nessuna query nativa per
+DirectQuery: DuckDB legge le tabelle collegate.
+
 ## File Power BI
 
 | Operazione | Supporto |
@@ -537,7 +579,8 @@ Fasi **1–12 completate**: interfaccia e report, Power Query, relazioni, DAX, f
 IA, interattività, Power Query avanzato, modello/DAX, pubblicazione e servizio Power BI. Poi: modifica interazioni, nuovi
 filtri dei dati, esportazione dati (1.5), tema scuro (1.6), calcoli visivi, funzioni DAX definite dall'utente e time
 intelligence a calendario (1.7), salvataggio PBIR/TMDL, Personalizza tema, traduzioni del modello, interfaccia in
-inglese, esportazione PowerPoint e avviso di aggiornamento (1.8), linguaggio M completo in Power Query.
+inglese, esportazione PowerPoint e avviso di aggiornamento (1.8), linguaggio M completo in Power Query (1.9), modelli
+compositi (DirectQuery/Doppia), aggregazioni, aggiornamento incrementale, prospettive, OLS, descrizioni, gruppi e Vista TMDL.
 
 **Da verificare** (implementato, provato solo con file di prova o server finti):
 - servizio Power BI su un tenant reale: accesso, aree di lavoro, pubblicazione, download dei report, lettura dei
@@ -550,7 +593,9 @@ inglese, esportazione PowerPoint e avviso di aggiornamento (1.8), linguaggio M c
 - in Power BI Desktop reale: funzioni definite dall'utente, calendari e calcoli visivi scritti nei file (`.pbit`/`.pbip`
   con livello di compatibilità 1701/1702, righe `Function`/`Calendar` del `.pbix`);
 - in Power BI Desktop reale: progetti PBIR/TMDL salvati da MiB-BI (convalidati solo con gli schemi JSON e il lettore di
-  MiB-BI) e traduzioni (`Culture`/`ObjectTranslation` nel `.pbix`).
+  MiB-BI) e traduzioni (`Culture`/`ObjectTranslation` nel `.pbix`);
+- in Power BI Desktop reale: `alternateOf`, `refreshPolicy` (espressione di polling), `pageRefresh` (durata in millisecondi),
+  prospettive e OLS scritti da MiB-BI.
 
 **Limiti noti**:
 - dataset push senza ruoli, gruppi di calcolo e gerarchie (limite delle API Power BI);
@@ -565,7 +610,7 @@ inglese, esportazione PowerPoint e avviso di aggiornamento (1.8), linguaggio M c
 
 - Power Query: niente `Pdf.Tables`/`Web.Page`, nessun query folding delle query M.
 
-**Possibili prossimi passi**: modelli compositi/DirectQuery, Copilot con Claude.
+**Possibili prossimi passi**: Copilot con Claude.
 
 ## Test di fumo
 

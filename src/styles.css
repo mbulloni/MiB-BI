@@ -1118,7 +1118,7 @@ thead .pq-rn { z-index: 2; }
 .persp-field { display: flex; align-items: center; gap: 6px; padding: 2px 0 2px 26px; }
 .data-persp { display: flex; align-items: center; gap: 6px; margin: 0 12px 6px; font-size: 12px; min-width: 0; }
 .data-persp select { flex: 1; min-width: 0; }
-.ols-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; max-height: 140px; overflow: auto; font-size: 12px; }
+.ols-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; max-height: 150px; overflow: auto; font-size: 12px; flex-shrink: 0; }
 .group-dlg { width: min(760px, 94vw); max-height: 86vh; }
 .group-dlg .hint { color: var(--text2); font-size: 11px; }
 .group-lists { display: flex; gap: 12px; }
@@ -1144,3 +1144,5 @@ thead .pq-rn { z-index: 2; }
 .tmdl-log { padding: 8px 12px; overflow: auto; font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
 .tmdl-log .err { color: var(--err-text); display: flex; gap: 6px; align-items: flex-start; }
 .tmdl-log .ok { color: var(--ok-text); }
+.roles-col.wide { overflow: auto; }
+.group-box .chk, .ols-cols .chk { display: flex; align-items: center; gap: 6px; }
