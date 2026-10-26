@@ -18,6 +18,9 @@ docker run -d --name mib-bi-bq -p 19050:9050 -v $PWD/scripts/connectors/seed-big
 # Access: sample files of andipaetzold/mdb-reader (test/data); ODBC without root: driver .so from `apt-get download libsqliteodbc`
 node scripts/connectors/test-driver.cjs '{"kind":"access","file":"ASampleDatabase.accdb"}' - '.Asset Items'
 node scripts/connectors/test-driver.cjs '{"kind":"odbc","host":"Driver=/path/libsqlite3odbc.so;Database=test.db"}' - .clienti
+
+# Apache Polaris (Iceberg REST catalog, :8181): catalog "vendite" on local files, principal root / s3cr3t
+sh scripts/connectors/seed-polaris.sh
 ```
 
 These containers and passwords are local test fixtures only.

@@ -43,13 +43,16 @@ export type StorageMode = 'import' | 'directQuery' | 'dual';
 export interface ParamField { label: string; table: string; column: string; measure?: boolean; }
 
 /** Database table source (Ottieni dati › Database). The password is stored outside the report. */
-export type DbKind = 'mysql' | 'postgres' | 'sqlite' | 'sqlserver' | 'oracle' | 'snowflake' | 'bigquery' | 'databricks' | 'clickhouse' | 'mongodb' | 'access' | 'odbc' | 'kusto' | 'dataverse';
+export type DbKind = 'mysql' | 'postgres' | 'sqlite' | 'sqlserver' | 'oracle' | 'snowflake' | 'bigquery' | 'databricks' | 'clickhouse' | 'mongodb' | 'access' | 'odbc' | 'kusto' | 'dataverse' | 'iceberg';
 /** Database source. `variant` = the connector chosen in Ottieni dati (azuresql, synapse, fabric, redshift…) when it shares
  *  a driver; `query` = native SQL statement (Opzioni avanzate › Istruzione SQL) instead of schema/table.
- *  `auth`: sql | windows (NTLM, `domain`) | entra (user + password) | token (MiB-BI's Microsoft account) | keypair | browser | adc. */
+ *  `auth`: sql | windows (NTLM, `domain`) | entra (user + password) | token (MiB-BI's Microsoft account) | keypair | browser | adc.
+ *  Iceberg REST catalog (Apache Polaris…): `host` = catalog URI, `database` = warehouse, `user` = OAuth2 client id,
+ *  `scope`/`tokenUri` = OAuth2 scope and token endpoint (default `<uri>/v1/oauth/tokens`). */
 export interface DbSource {
   kind: DbKind; variant?: string; host?: string; port?: string; database?: string; user?: string; file?: string;
   auth?: string; domain?: string; encrypt?: boolean; trustCert?: boolean; warehouse?: string; role?: string; httpPath?: string; authDb?: string;
+  scope?: string; tokenUri?: string;
   schema: string; table: string; query?: string;
 }
 export type DbConnection = Omit<DbSource, 'schema' | 'table'>;

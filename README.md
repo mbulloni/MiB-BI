@@ -428,6 +428,7 @@ segmenti multipli byte per byte). I `.pbix` di MiB-BI sono stati aperti in Power
 | ODBC (SAP HANA, Db2, Teradata, Informix, Vertica, Exasol…) | modulo `odbc` su unixODBC: DSN o stringa di connessione | quella del driver |
 | Azure Data Explorer (Kusto) | API REST v1 (tabelle e query KQL) | account Microsoft di MiB-BI |
 | Dataverse (Power Platform, Dynamics 365) | Web API OData v4 con paginazione | account Microsoft di MiB-BI |
+| Apache Polaris e altri cataloghi Iceberg REST (Nessie, Lakekeeper, Gravitino…) | estensione DuckDB `iceberg` (`ATTACH … TYPE ICEBERG`); file S3/ADLS/GCS letti con le credenziali temporanee fornite dal catalogo | OAuth2 client credentials (ID e segreto client del principal, ambito `PRINCIPAL_ROLE:ALL` per Polaris, URI del token facoltativo) o nessuna |
 
 Lo **Strumento di navigazione** elenca tabelle e viste con anteprima; *Opzioni avanzate › Istruzione SQL* importa il
 risultato di una query nativa (`Query1`), come in Power BI; in Power Query l'ingranaggio del passaggio *Origine* modifica
@@ -443,7 +444,12 @@ Verificati con database reali in container Docker (`scripts/connectors/`): SQL S
 navigatore, istruzione SQL, Aggiorna, export `.pbit`/`.pbix`), Oracle Database Free 23, ClickHouse 24, MongoDB 7,
 emulatore BigQuery, Access e ODBC (driver SQLite); anche dentro l'AppImage. Azure Data Explorer e Dataverse: provati contro un server che riproduce le loro API
 (`scripts/connectors/mock-rest.cjs`). Snowflake e Databricks non hanno un equivalente locale: implementati sulle API
-ufficiali; questi quattro restano da verificare su un account reale.
+ufficiali; questi quattro restano da verificare su un account reale. Apache Polaris: verificato con il container
+ufficiale (`scripts/connectors/seed-polaris.sh`, catalogo su file locali) in Importa e DirectQuery; i cataloghi su S3/ADLS/GCS
+con credenziali fornite dal catalogo non sono ancora provati. Power BI Desktop non ha un connettore Iceberg: nei
+`.pbit`/`.pbip` la query diventa un `error` M con l'origine, e alla pubblicazione queste tabelle viaggiano con i dati.
+
+![Apache Polaris nello Strumento di navigazione](docs/screenshots/polaris.png)
 
 ### Pubblica
 

@@ -1,5 +1,5 @@
-// Database sources (Get Data › Database): MySQL/MariaDB, PostgreSQL, SQLite through DuckDB's
-// scanner extensions (ATTACH … READ_ONLY); SQL Server, Oracle, Snowflake, BigQuery, Databricks, ClickHouse, MongoDB
+// Database sources (Get Data › Database): MySQL/MariaDB, PostgreSQL, SQLite and Iceberg REST catalogs (Apache Polaris…)
+// through DuckDB's scanner extensions (ATTACH … READ_ONLY); SQL Server, Oracle, Snowflake, BigQuery, Databricks, ClickHouse, MongoDB
 // and Access through Node drivers (drivers.cjs) cached as Parquet. Passwords never go into reports: they are kept in
 // <userData>/credentials.json, encrypted with Electron safeStorage (system keyring) when available,
 // otherwise only for the current session — like Power BI's data source credentials.
@@ -21,6 +21,7 @@ const credFile = () => path.join(app.getPath('userData'), 'credentials.json');
 function keyOf(c) {
   if (c.kind === 'sqlite' || c.kind === 'access') return `${c.kind}://${c.file}`;
   if (c.kind === 'bigquery') return `bigquery://${c.database ?? ''}@${c.file ?? 'adc'}`;
+  if (c.kind === 'iceberg') return `iceberg://${c.user ?? ''}@${c.host ?? ''}#${c.database ?? ''}`;
   const extra = c.auth && c.auth !== 'sql' ? `;auth=${c.auth}${c.domain ? `;domain=${c.domain}` : ''}` : '';
   return `${c.kind}://${c.user ?? ''}@${c.host ?? 'localhost'}:${c.port ?? ''}/${c.database ?? ''}${c.httpPath ? c.httpPath : ''}${extra}`;
 }
@@ -133,6 +134,10 @@ async function attach(c, password) {
   if (c.kind === 'sqlite') {
     if (!fs.existsSync(c.file)) throw new Error(`File SQLite non trovato: ${c.file}`);
     dsn = c.file; type = 'sqlite';
+  } else if (c.kind === 'iceberg') {
+    await attachIceberg(c, alias, password ?? passwordOf(c));
+    attached.set(key, alias);
+    return alias;
   } else {
     const pw = password ?? passwordOf(c);
     if (pw === undefined && c.user) {
@@ -148,6 +153,38 @@ async function attach(c, password) {
   await db.query(`ATTACH ${ql(dsn)} AS ${qi(alias)} (TYPE ${type}, READ_ONLY)`);
   attached.set(key, alias);
   return alias;
+}
+
+/** Iceberg REST catalog (Apache Polaris, Nessie, Lakekeeper…): OAuth2 client credentials in a DuckDB secret; the
+ *  table files are read with the storage credentials the catalog vends (S3, ADLS, GCS) or from the local disk. */
+async function attachIceberg(c, alias, secret) {
+  const uri = String(c.host || '').trim().replace(/\/+$/, '');
+  if (!/^https?:\/\//i.test(uri)) throw new Error('URI del catalogo non valido: deve iniziare con http:// o https://');
+  if (!c.database) throw new Error('Indicare il warehouse (nome del catalogo).');
+  if (c.user && secret === undefined) {
+    const err = new Error(`Credenziali mancanti per ${keyOf(c)}. Ricollegarsi da Ottieni dati › Database.`);
+    err.code = 'NO_CREDENTIALS';
+    throw err;
+  }
+  await db.query('INSTALL httpfs; LOAD httpfs; INSTALL iceberg; LOAD iceberg;');
+  try {
+    let auth;
+    if (c.user) {
+      const opts = [`TYPE ICEBERG`, `CLIENT_ID ${ql(c.user)}`, `CLIENT_SECRET ${ql(secret ?? '')}`, `OAUTH2_SERVER_URI ${ql(c.tokenUri || `${uri}/v1/oauth/tokens`)}`];
+      if (c.scope) opts.push(`OAUTH2_SCOPE ${ql(c.scope)}`);
+      await db.query(`CREATE OR REPLACE SECRET ${qi(alias + '_secret')} (${opts.join(', ')})`);
+      auth = `SECRET ${qi(alias + '_secret')}`;
+    } else auth = `AUTHORIZATION_TYPE 'none'`;
+    await db.query(`ATTACH ${ql(c.database)} AS ${qi(alias)} (TYPE ICEBERG, ENDPOINT ${ql(uri)}, ${auth}, READ_ONLY)`);
+  } catch (e) {
+    // DuckDB's messages carry the HTTP status of the catalog: name the usual causes
+    const m = String(e.message);
+    const hint = /_401|unauthorized_client|invalid_client/i.test(m) ? 'Credenziali rifiutate dal catalogo: controllare ID e segreto client.'
+      : /_403|forbidden/i.test(m) ? 'Accesso negato: il principal non ha un ruolo con privilegi su questo catalogo.'
+        : /_404|not ?found/i.test(m) ? 'Catalogo o warehouse non trovato: controllare URI e nome del warehouse.'
+          : /could not connect|connection refused|resolve|timed? ?out/i.test(m) ? 'Catalogo non raggiungibile: controllare URI e rete.' : null;
+    throw hint ? new Error(`${hint}\n${m}`) : e;
+  }
 }
 
 /** Connects (validating credentials) and lists the user tables/views. */

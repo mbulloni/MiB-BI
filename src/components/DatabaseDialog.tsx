@@ -26,6 +26,8 @@ export const CONNECTORS: Connector[] = [
   { id: 'kusto', label: 'Azure Data Explorer (Kusto)', kind: 'kusto', port: '', group: 'Azure' },
   { id: 'dataverse', label: 'Dataverse (Power Platform, Dynamics 365)', kind: 'dataverse', port: '', group: 'Azure' },
   { id: 'clickhouse', label: 'ClickHouse', kind: 'clickhouse', port: '8123', group: 'Database' },
+  { id: 'polaris', label: 'Apache Polaris (catalogo Iceberg)', kind: 'iceberg', variant: 'polaris', port: '', group: 'Altro' },
+  { id: 'iceberg', label: 'Catalogo Apache Iceberg REST (Nessie, Lakekeeper, Gravitino…)', kind: 'iceberg', port: '', group: 'Altro' },
   { id: 'mongodb', label: 'MongoDB', kind: 'mongodb', port: '27017', group: 'Altro' },
   { id: 'odbc', label: 'ODBC (SAP HANA, Db2, Teradata, Informix, Vertica…)', kind: 'odbc', port: '', group: 'Altro' },
 ];
@@ -36,6 +38,8 @@ const AUTHS: Record<string, [string, string][]> = {
   bigquery: [['key', 'Chiave dell\'account di servizio (JSON)'], ['adc', 'Credenziali predefinite dell\'applicazione (gcloud)']],
 };
 
+/** Polaris grants a principal its roles through this scope (default of its quickstart and of Spark/PyIceberg setups). */
+const POLARIS_SCOPE = 'PRINCIPAL_ROLE:ALL';
 const qi = (s: string) => '"' + s.replace(/"/g, '""') + '"';
 const TOKEN_HINT = 'Usa l\'account Microsoft con cui si accede in MiB-BI (Pubblica / Accedi): l\'app registrata deve avere l\'autorizzazione delegata Azure SQL Database › user_impersonation.';
 
@@ -47,7 +51,7 @@ export function DatabaseDialog() {
   const conn0 = CONNECTORS.find((c) => c.id === cid)!;
   const kind = conn0.kind;
   const [form, setForm] = useState({ host: 'localhost', port: '', database: '', user: '', password: '', file: '', remember: true, auth: 'sql', domain: '',
-    encrypt: true, trustCert: false, warehouse: '', role: '', httpPath: '', authDb: '', query: '', advanced: false, mode: 'import' as 'import' | 'directQuery' });
+    encrypt: true, trustCert: false, warehouse: '', role: '', httpPath: '', authDb: '', scope: '', tokenUri: '', query: '', advanced: false, mode: 'import' as 'import' | 'directQuery' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [conn, setConn] = useState<{ c: DbConnection; alias: string | null; tables: { schema: string; table: string; rows: number | null; view?: boolean }[]; stored: boolean } | null>(null);
@@ -59,14 +63,14 @@ export function DatabaseDialog() {
   useEffect(() => {
     if (!open) return;
     setConn(null); setError(null); setPicked(new Set()); setFocus(null);
-    if (typeof open === 'string' && CONNECTORS.some((c) => c.id === open)) { setCid(open); setForm((f) => ({ ...f, auth: open === 'bigquery' ? 'key' : open === 'fabric' ? 'token' : 'sql', encrypt: true })); }
+    if (typeof open === 'string' && CONNECTORS.some((c) => c.id === open)) { setCid(open); setForm((f) => ({ ...f, auth: open === 'bigquery' ? 'key' : open === 'fabric' ? 'token' : 'sql', encrypt: true, ...(CONNECTORS.find((c) => c.id === open)!.kind === 'iceberg' && f.host === 'localhost' ? { host: '' } : {}) })); }
     if (typeof open === 'string' && open.startsWith('{')) {
       // Origini recenti: a saved connection (never its password)
       const c = JSON.parse(open) as DbConnection;
       const target = CONNECTORS.find((x) => x.kind === c.kind && (x.variant ?? undefined) === (c.variant ?? undefined)) ?? CONNECTORS.find((x) => x.kind === c.kind);
       if (target) setCid(target.id);
       setForm((f) => ({ ...f, host: c.host ?? '', port: c.port ?? '', database: c.database ?? '', user: c.user ?? '', file: c.file ?? '', auth: c.auth ?? 'sql',
-        domain: c.domain ?? '', encrypt: c.encrypt !== false, trustCert: !!c.trustCert, warehouse: c.warehouse ?? '', role: c.role ?? '', httpPath: c.httpPath ?? '', authDb: c.authDb ?? '', password: '' }));
+        domain: c.domain ?? '', encrypt: c.encrypt !== false, trustCert: !!c.trustCert, warehouse: c.warehouse ?? '', role: c.role ?? '', httpPath: c.httpPath ?? '', authDb: c.authDb ?? '', scope: c.scope ?? '', tokenUri: c.tokenUri ?? '', password: '' }));
     }
   }, [open]);
   useEffect(() => {
@@ -93,11 +97,12 @@ export function DatabaseDialog() {
     if (kind === 'bigquery') Object.assign(base, { auth: form.auth, file: form.auth === 'key' ? form.file : undefined, host: form.host.trim() === 'localhost' ? undefined : form.host.trim() || undefined, user: undefined });
     if (kind === 'mongodb') Object.assign(base, { authDb: form.authDb.trim() || undefined });
     if (kind === 'clickhouse') Object.assign(base, { encrypt: form.encrypt });
+    if (kind === 'iceberg') Object.assign(base, { host: form.host.trim(), port: undefined, scope: form.scope.trim() || (conn0.variant === 'polaris' ? POLARIS_SCOPE : undefined), tokenUri: form.tokenUri.trim() || undefined });
     if (form.advanced && form.query.trim()) base.query = form.query.trim();
     return base;
   };
   const needsSecret = !fileKind && !['bigquery', 'kusto', 'dataverse'].includes(kind) && !(kind === 'sqlserver' && form.auth === 'token') && !(kind === 'snowflake' && form.auth === 'browser');
-  const sqlCapable = !['mongodb', 'access', 'sqlite', 'dataverse'].includes(kind);
+  const sqlCapable = !['mongodb', 'access', 'sqlite', 'dataverse', 'iceberg'].includes(kind);
 
   const doConnect = async () => {
     setBusy(true); setError(null);
@@ -132,7 +137,7 @@ export function DatabaseDialog() {
         {!conn ? (
           <div className="db pq-db" style={{ maxHeight: '72vh', overflow: 'auto' }}>
             <label className="pq-field">Connettore
-              <select value={cid} onChange={(e) => { const id = e.target.value; setCid(id); set({ port: '', auth: id === 'bigquery' ? 'key' : id === 'fabric' ? 'token' : 'sql' }); }}>
+              <select value={cid} onChange={(e) => { const id = e.target.value; setCid(id); set({ port: '', auth: id === 'bigquery' ? 'key' : id === 'fabric' ? 'token' : 'sql', ...(CONNECTORS.find((c) => c.id === id)?.kind === 'iceberg' && form.host === 'localhost' ? { host: '' } : {}) }); }}>
                 {grouped.map(([g, list]) => <optgroup key={g} label={g}>{list.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</optgroup>)}
               </select>
             </label>
@@ -146,8 +151,8 @@ export function DatabaseDialog() {
             )}
             {!fileKind && <>
               <div className="pq-row" style={{ alignItems: 'flex-start' }}>
-                <label className="pq-field" style={{ flex: 3 }}>{kind === 'snowflake' ? 'Server (account.snowflakecomputing.com)' : kind === 'databricks' ? 'Nome host del server' : kind === 'bigquery' ? 'Endpoint (facoltativo, es. emulatore)' : kind === 'oracle' ? 'Server (host:porta/servizio)' : kind === 'mongodb' ? 'Server o stringa di connessione' : kind === 'odbc' ? 'Nome origine dati (DSN) o stringa di connessione' : kind === 'kusto' ? 'Cluster' : kind === 'dataverse' ? 'URL dell\'ambiente' : 'Server'}
-                  <input type="text" value={kind === 'bigquery' && form.host === 'localhost' ? '' : form.host} onChange={(e) => set({ host: e.target.value })} placeholder={kind === 'kusto' ? 'https://cluster.westeurope.kusto.windows.net' : kind === 'dataverse' ? 'https://organizzazione.crm4.dynamics.com' : conn0.variant === 'azuresql' ? 'server.database.windows.net' : conn0.variant === 'fabric' ? 'xxxx.datawarehouse.fabric.microsoft.com' : kind === 'sqlserver' ? 'server\\istanza' : ''} />
+                <label className="pq-field" style={{ flex: 3 }}>{kind === 'snowflake' ? 'Server (account.snowflakecomputing.com)' : kind === 'databricks' ? 'Nome host del server' : kind === 'bigquery' ? 'Endpoint (facoltativo, es. emulatore)' : kind === 'oracle' ? 'Server (host:porta/servizio)' : kind === 'mongodb' ? 'Server o stringa di connessione' : kind === 'odbc' ? 'Nome origine dati (DSN) o stringa di connessione' : kind === 'kusto' ? 'Cluster' : kind === 'dataverse' ? 'URL dell\'ambiente' : kind === 'iceberg' ? 'URI del catalogo REST' : 'Server'}
+                  <input type="text" value={kind === 'bigquery' && form.host === 'localhost' ? '' : form.host} onChange={(e) => set({ host: e.target.value })} placeholder={kind === 'iceberg' ? (conn0.variant === 'polaris' ? 'https://polaris.azienda.it/api/catalog' : 'https://catalogo.azienda.it/iceberg') : kind === 'kusto' ? 'https://cluster.westeurope.kusto.windows.net' : kind === 'dataverse' ? 'https://organizzazione.crm4.dynamics.com' : conn0.variant === 'azuresql' ? 'server.database.windows.net' : conn0.variant === 'fabric' ? 'xxxx.datawarehouse.fabric.microsoft.com' : kind === 'sqlserver' ? 'server\\istanza' : ''} />
                 </label>
                 {conn0.port && kind !== 'oracle' && <label className="pq-field" style={{ flex: 1 }}>Porta<input type="text" value={form.port} placeholder={conn0.port} onChange={(e) => set({ port: e.target.value })} /></label>}
               </div>
@@ -155,7 +160,9 @@ export function DatabaseDialog() {
               {kind === 'snowflake' && <label className="pq-field">Warehouse<input type="text" value={form.warehouse} onChange={(e) => set({ warehouse: e.target.value })} /></label>}
               {kind === 'odbc' && <div className="pq-note">Esempi: <code>DSN=Vendite</code> oppure <code>Driver={'{'}HDBODBC{'}'};ServerNode=host:30015</code>. Richiede unixODBC e il driver ODBC del database installati nel sistema (<code>odbcinst -q -d</code> li elenca).</div>}
               {(kind === 'kusto' || kind === 'dataverse') && <div className="pq-note">{TOKEN_HINT.replace('Azure SQL Database › user_impersonation', kind === 'kusto' ? 'Azure Data Explorer › user_impersonation' : 'Dynamics CRM › user_impersonation')}</div>}
-              {kind !== 'oracle' && kind !== 'odbc' && kind !== 'dataverse' && <label className="pq-field">{kind === 'bigquery' ? 'ID progetto' : kind === 'databricks' ? 'Catalogo (facoltativo)' : 'Database (facoltativo)'}<input type="text" value={form.database} onChange={(e) => set({ database: e.target.value })} /></label>}
+              {kind !== 'oracle' && kind !== 'odbc' && kind !== 'dataverse' && <label className="pq-field">{kind === 'bigquery' ? 'ID progetto' : kind === 'databricks' ? 'Catalogo (facoltativo)' : kind === 'iceberg' ? (conn0.variant === 'polaris' ? 'Warehouse (nome del catalogo Polaris)' : 'Warehouse') : 'Database (facoltativo)'}<input type="text" value={form.database} onChange={(e) => set({ database: e.target.value })} /></label>}
+              {kind === 'iceberg' && <div className="pq-note">{conn0.variant === 'polaris' ? 'Le tabelle Iceberg vengono lette con DuckDB: i file (S3, ADLS, GCS) con le credenziali temporanee fornite da Polaris. ID e segreto client sono le credenziali OAuth2 del principal Polaris.'
+                : 'Le tabelle Iceberg vengono lette con DuckDB: i file (S3, ADLS, GCS) con le credenziali temporanee fornite dal catalogo. ID e segreto client (OAuth2) vanno lasciati vuoti se il catalogo non richiede autenticazione.'}</div>}
               {kind === 'oracle' && <div className="pq-note">Esempi: <code>db.azienda.it:1521/ORCLPDB1</code> oppure una descrizione TNS completa.</div>}
               {AUTHS[kind] && (
                 <label className="pq-field">Autenticazione
@@ -171,8 +178,8 @@ export function DatabaseDialog() {
               )}
               {needsSecret && (
                 <div className="pq-row" style={{ alignItems: 'flex-start' }}>
-                  {kind !== 'databricks' && <label className="pq-field" style={{ flex: 1 }}>Nome utente<input type="text" value={form.user} onChange={(e) => set({ user: e.target.value })} /></label>}
-                  <label className="pq-field" style={{ flex: 1 }}>{kind === 'databricks' ? 'Token di accesso personale' : kind === 'snowflake' && form.auth === 'keypair' ? 'Chiave privata (PEM)' : 'Password'}
+                  {kind !== 'databricks' && <label className="pq-field" style={{ flex: 1 }}>{kind === 'iceberg' ? 'ID client' : 'Nome utente'}<input type="text" value={form.user} onChange={(e) => set({ user: e.target.value })} /></label>}
+                  <label className="pq-field" style={{ flex: 1 }}>{kind === 'databricks' ? 'Token di accesso personale' : kind === 'iceberg' ? 'Segreto client' : kind === 'snowflake' && form.auth === 'keypair' ? 'Chiave privata (PEM)' : 'Password'}
                     {kind === 'snowflake' && form.auth === 'keypair'
                       ? <textarea rows={3} value={form.password} onChange={(e) => set({ password: e.target.value })} />
                       : <input type="password" value={form.password} onChange={(e) => set({ password: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && doConnect()} />}
@@ -180,6 +187,12 @@ export function DatabaseDialog() {
                 </div>
               )}
               {kind === 'snowflake' && form.auth !== 'sql' && <label className="pq-field">Nome utente<input type="text" value={form.user} onChange={(e) => set({ user: e.target.value })} /></label>}
+              {kind === 'iceberg' && (
+                <div className="pq-row" style={{ alignItems: 'flex-start' }}>
+                  <label className="pq-field" style={{ flex: 1 }}>Ambito OAuth2<input type="text" value={form.scope} placeholder={conn0.variant === 'polaris' ? POLARIS_SCOPE : 'facoltativo'} onChange={(e) => set({ scope: e.target.value })} /></label>
+                  <label className="pq-field" style={{ flex: 2 }}>URI del token OAuth2<input type="text" value={form.tokenUri} placeholder={(form.host.trim().replace(/\/+$/, '') || 'URI del catalogo') + '/v1/oauth/tokens'} onChange={(e) => set({ tokenUri: e.target.value })} /></label>
+                </div>
+              )}
               {kind === 'mongodb' && <label className="pq-field">Database di autenticazione<input type="text" value={form.authDb} placeholder="admin" onChange={(e) => set({ authDb: e.target.value })} /></label>}
               {(kind === 'sqlserver' || kind === 'clickhouse') && (
                 <div className="pq-row" style={{ gap: 16 }}>
@@ -203,9 +216,9 @@ export function DatabaseDialog() {
                 <label className="pq-check"><input type="radio" name="dq-mode" checked={form.mode === 'directQuery'} onChange={() => set({ mode: 'directQuery' })} />DirectQuery</label>
               </div>
               <span className="hint">{form.mode === 'import' ? 'I dati vengono copiati nel modello e aggiornati con Aggiorna.'
-                : ['mysql', 'postgres', 'sqlite'].includes(kind) ? 'I dati restano nel database: ogni oggetto visivo lo interroga al momento (vista DuckDB sul database collegato).'
+                : ['mysql', 'postgres', 'sqlite', 'iceberg'].includes(kind) ? 'I dati restano nel database: ogni oggetto visivo lo interroga al momento (vista DuckDB sul database collegato).'
                 : 'Ogni oggetto visivo legge i dati dal risultato della query; l\'aggiornamento automatico della pagina e Aggiorna rieseguono la query sul database.'}
-                {['mysql', 'postgres', 'sqlite'].includes(kind) ? ' Al primo uso DuckDB scarica l\'estensione del connettore.' : ''}</span>
+                {['mysql', 'postgres', 'sqlite', 'iceberg'].includes(kind) ? ' Al primo uso DuckDB scarica l\'estensione del connettore.' : ''}</span>
             </div>
             {error && <div className="pq-err" style={{ userSelect: 'text' }}>{error}</div>}
           </div>
@@ -241,7 +254,7 @@ export function DatabaseDialog() {
         )}
         <div className="df">
           {!conn ? <>
-            <button className="btn primary" disabled={busy || (fileKind ? !form.file : kind === 'bigquery' ? !form.database || (form.auth === 'key' && !form.file) : !form.host || (kind === 'databricks' && !form.httpPath))} onClick={doConnect}>{busy ? 'Connessione…' : 'Connetti'}</button>
+            <button className="btn primary" disabled={busy || (fileKind ? !form.file : kind === 'bigquery' ? !form.database || (form.auth === 'key' && !form.file) : kind === 'iceberg' ? !form.host.trim() || !form.database.trim() : !form.host || (kind === 'databricks' && !form.httpPath))} onClick={doConnect}>{busy ? 'Connessione…' : 'Connetti'}</button>
             <button className="btn" onClick={close}>Annulla</button>
           </> : <>
             <button className="btn primary" disabled={!picked.size} onClick={() => load(false)}>Carica</button>

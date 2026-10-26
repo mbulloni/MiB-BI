@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, type PbiResult, type PbiStatus, type PbiWorkspace } from '../api';
 import { prepareCfExport, useStore } from '../store';
-import { buildFabricModel, buildPushSchema, buildReportParts, buildThinPbixParts } from '../pbix/pbit';
+import { buildFabricModel, buildPushSchema, buildReportParts, buildThinPbixParts, serviceReadable } from '../pbix/pbit';
 import { Icon } from './icons';
 
 type Mode = 'push' | 'fabric';
@@ -38,7 +38,7 @@ export function PublishDialog() {
   useEffect(() => { logRef.current?.scrollTo(0, logRef.current.scrollHeight); }, [log]);
 
   const base = (s.filePath?.split('/').pop() ?? s.sourceName ?? 'Report').replace(/\.(mibx|pbix|pbit|pbip)$/i, '');
-  const hasDb = s.tables.some((t) => t.source.db && t.source.db.kind !== 'sqlite');
+  const hasDb = s.tables.some((t) => t.source.db && serviceReadable(t.source.db.kind));
 
   useEffect(() => {
     if (!open) return;

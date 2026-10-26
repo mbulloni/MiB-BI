@@ -66,6 +66,8 @@ export function dbSourceM(d: NonNullable<TableMeta['source']['db']>): string {
     case 'clickhouse': return `Odbc.Query(${mStr(`driver={ClickHouse ODBC Driver (Unicode)};url=${d.encrypt ? 'https' : 'http'}://${host}:${d.port || 8123};database=${d.database || 'default'}`)}, ${q ?? mStr(`SELECT * FROM \`${d.schema}\`.\`${d.table}\``)})`;
     case 'kusto': return q ? `AzureDataExplorer.Contents(${mStr(host)}, ${mStr(d.database ?? '')}, ${q}, [])` : `AzureDataExplorer.Contents(${mStr(host)}, ${mStr(d.database ?? '')}, ${mStr(d.table)}, [])`;
     case 'dataverse': return `CommonDataService.Database(${mStr(host.replace(/^https?:\/\//, ''))}){[Schema="dbo",Item=${mStr(d.table)}]}[Data]`;
+    // Power BI Desktop has no Iceberg REST catalog connector: the query fails with this message when refreshed there.
+    case 'iceberg': return `error ${mStr(`Catalogo Iceberg REST ${d.variant === 'polaris' ? '(Apache Polaris) ' : ''}${host}, warehouse ${d.database ?? ''}, tabella ${d.schema}.${d.table}: Power BI Desktop non ha un connettore per questa origine.`)}`;
     case 'odbc': return q ? `Odbc.Query(${mStr(/=/.test(host) ? host : `dsn=${host}`)}, ${q})` : `Odbc.DataSource(${mStr(/=/.test(host) ? host : `dsn=${host}`)}, [HierarchicalNavigation=true])${d.schema ? `{[Name=${mStr(d.schema)},Kind="Schema"]}[Data]` : ''}{[Name=${mStr(d.table)},Kind="Table"]}[Data]`;
     case 'mongodb': return `Odbc.Query(${mStr(`dsn=MongoDB;database=${d.database ?? ''}`)}, ${mStr(`SELECT * FROM ${d.table}`)})`;
     default: return `Odbc.DataSource(${mStr(`driver={SQLite3 ODBC Driver};database=${d.file}`)}, [HierarchicalNavigation=true]){[Name=${mStr(d.table)},Kind="Table"]}[Data]`;
@@ -569,16 +571,19 @@ export function buildThinPbixParts(report: Report): (PbitPart & { utf8?: string 
   ];
 }
 
+/** Database sources the Power BI service can query itself (SQLite files and Iceberg REST catalogs have no connector there). */
+export const serviceReadable = (kind: string) => kind !== 'sqlite' && kind !== 'iceberg';
+
 /** Full semantic model for Fabric: TMSL plus the tables whose data is embedded in their M
  *  (all of them, or only the non-database ones when `keepDb`). Calculated objects keep their DAX. */
 export function buildFabricModel(report: Report, tables: TableMeta[], keepDb: boolean) {
   const model = buildModelSchema(report, tables);
   const warnings: string[] = [];
-  const embed = tables.filter((t) => !t.source.dax && !report.calcGroups?.some((g) => g.table === t.name) && !(keepDb && t.source.db && t.source.db.kind !== 'sqlite')).map((t) => ({
+  const embed = tables.filter((t) => !t.source.dax && !report.calcGroups?.some((g) => g.table === t.name) && !(keepDb && t.source.db && serviceReadable(t.source.db.kind))).map((t) => ({
     table: t.name,
     columns: t.columns.filter((c) => !t.calcColumns?.some((x) => x.name === c.name)).map((c) => ({ name: c.name, m: tomType(c.type).m })),
   }));
-  const kept = tables.filter((t) => keepDb && t.source.db && t.source.db.kind !== 'sqlite').map((t) => t.name);
+  const kept = tables.filter((t) => keepDb && t.source.db && serviceReadable(t.source.db.kind)).map((t) => t.name);
   if (kept.length) warnings.push(`Tabelle collegate al database (${kept.join(', ')}): il servizio deve poter raggiungere il server, altrimenti serve un gateway dati locale.`);
   return { model, embed, warnings };
 }
