@@ -586,7 +586,7 @@ IA, interattività, Power Query avanzato, modello/DAX, pubblicazione e servizio 
 filtri dei dati, esportazione dati (1.5), tema scuro (1.6), calcoli visivi, funzioni DAX definite dall'utente e time
 intelligence a calendario (1.7), salvataggio PBIR/TMDL, Personalizza tema, traduzioni del modello, interfaccia in
 inglese, esportazione PowerPoint e avviso di aggiornamento (1.8), linguaggio M completo in Power Query (1.9), modelli
-compositi (DirectQuery/Doppia), aggregazioni, aggiornamento incrementale, prospettive, OLS, descrizioni, gruppi e Vista TMDL (1.10).
+compositi (DirectQuery/Doppia), aggregazioni, aggiornamento incrementale, prospettive, OLS, descrizioni, gruppi e Vista TMDL (1.10), connettore Apache Polaris / cataloghi Iceberg REST (1.10.1).
 
 **Da verificare** (implementato, provato solo con file di prova o server finti):
 - servizio Power BI su un tenant reale: accesso, aree di lavoro, pubblicazione, download dei report, lettura dei

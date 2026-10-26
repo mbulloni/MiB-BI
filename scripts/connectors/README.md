@@ -20,7 +20,7 @@ node scripts/connectors/test-driver.cjs '{"kind":"access","file":"ASampleDatabas
 node scripts/connectors/test-driver.cjs '{"kind":"odbc","host":"Driver=/path/libsqlite3odbc.so;Database=test.db"}' - .clienti
 
 # Apache Polaris (Iceberg REST catalog, :8181): catalog "vendite" on local files, principal root / s3cr3t
-sh scripts/connectors/seed-polaris.sh
+docker rm -f mib-bi-polaris; sh scripts/connectors/seed-polaris.sh   # in-memory metastore: after a container restart the catalog is gone, run again
 ```
 
 These containers and passwords are local test fixtures only.
