@@ -4,6 +4,10 @@
 import type { FieldRef, Measure, RoleDef } from './types';
 
 let hidden: Set<string> | null = null;
+let viewing = false;
+/** Visualizza come is active: row-level security restricts the detail tables, so aggregations are not used. */
+export const viewingAsRole = () => viewing;
+export const setViewing = (on: boolean) => { viewing = on; };
 /** Objects hidden for the roles being viewed (null = no OLS in effect); kept in sync by store.setViewAs. */
 export const olsHidden = () => hidden;
 export const setOls = (h: Set<string> | null) => { hidden = h && h.size ? h : null; };

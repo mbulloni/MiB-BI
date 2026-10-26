@@ -4,7 +4,7 @@ import { isNumeric, monthNames, quarterPrefix } from './format';
 import { visualDef } from './visuals/catalog';
 import { cfInput, fieldKey } from './visuals/condfmt';
 import { aggOrigin, rewriteForAggregations } from './aggregations';
-import { olsBlock, olsHidden } from './ols';
+import { olsBlock, olsHidden, viewingAsRole } from './ols';
 
 
 export const NULL_KEY = '__NULL__';
@@ -445,7 +445,8 @@ export function buildVisualQuery(
   }
   // Aggregation tables answer the query when they cover all its fields and filters.
   let aggTable: string | undefined;
-  if (modelExtras.aggregations?.length && v.type !== 'slicer') {
+  // Not while viewing as a role: the aggregation table is not restricted by the detail table's row filters.
+  if (modelExtras.aggregations?.length && v.type !== 'slicer' && !viewingAsRole()) {
     const r = rewriteForAggregations(modelExtras.aggregations, tables.map((t) => t.name), rels, v, filters, visuals, cross);
     if (r) { v = r.v; filters = r.filters; visuals = r.visuals; cross = r.cross; aggTable = r.table; }
   }

@@ -12,7 +12,7 @@ import { calcColumnSql, calcTableSql, checkCalcItem, checkFunction, checkMeasure
 import { inlineParamsInM, paramFromM, resolveSource, setParams, withParams } from './pq/params';
 import { partitions, policyWindow, ts, type PartitionInfo } from './incremental';
 import { appendStep } from './pq/m/edit';
-import { olsFor, setOls } from './ols';
+import { olsFor, setOls, setViewing } from './ols';
 import { groupingDax } from './grouping';
 import { inlineFromM } from './pq/mparse';
 import { parseLayout, setCfExportRanges, setHierarchyLevels, themeFromLayout } from './pbix/layout';
@@ -1020,6 +1020,7 @@ export const useStore = create<State>((set, get) => {
           await api.setRole(tables);
         }
         setOls(v ? olsFor(roles) : null);
+        setViewing(!!v);
         set((st) => ({ viewAs: v, viewAsDialog: false, crossFilter: null, dataVersion: st.dataVersion + 1 }));
       } catch (e: any) {
         get().notify('Visualizza come non riuscito: ' + e.message.split('\n')[0], 10000);
